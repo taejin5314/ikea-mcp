@@ -1,0 +1,24 @@
+import { z } from "zod";
+
+export const SearchProductsInput = z.object({
+  query: z.string().min(1),
+  countryCode: z.string().length(2).default("us"),
+  langCode: z.string().length(2).default("en"),
+  size: z.number().int().min(1).max(50).default(10),
+});
+
+export const CheckStoreStockInput = z.object({
+  itemNo: z.string().min(1),
+  storeId: z.string().min(1),
+  countryCode: z.string().length(2).default("us"),
+});
+
+export const CompareStoreStockInput = z.object({
+  itemNo: z.string().min(1),
+  storeIds: z.array(z.string().min(1)).min(2).max(10),
+  countryCode: z.string().length(2).default("us"),
+});
+
+export type SearchProductsInputType = z.infer<typeof SearchProductsInput>;
+export type CheckStoreStockInputType = z.infer<typeof CheckStoreStockInput>;
+export type CompareStoreStockInputType = z.infer<typeof CompareStoreStockInput>;
