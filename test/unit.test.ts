@@ -129,7 +129,7 @@ test("search_products projection — selects expected fields only", () => {
   const main = raw.searchResultPage.products.main;
   const output = {
     total: main.max,
-    items: main.items.map(({ product: p }) => ({
+    items: main.items.filter((i) => i.product != null).map(({ product: p }) => ({
       itemNo: p.itemNo,
       name: p.name,
       typeName: p.typeName,
