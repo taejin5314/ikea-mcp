@@ -110,7 +110,7 @@ interface StockError {
 }
 
 export interface StockResponse {
-  availabilities: StockAvailabilityItem[];
+  availabilities: StockAvailabilityItem[] | null;
   errors?: StockError[];
   timestamp: string;
   // TODO: traceId not typed — not needed for MVP
@@ -126,7 +126,7 @@ function annotateStockErrors(errors: StockResponse["errors"]) {
 }
 
 export function projectStock(result: StockResponse) {
-  const a = result.availabilities[0];
+  const a = result.availabilities?.[0];
   return {
     availableForCashCarry: a?.availableForCashCarry ?? false,
     quantity: a?.buyingOption.cashCarry.availability.quantity ?? null,

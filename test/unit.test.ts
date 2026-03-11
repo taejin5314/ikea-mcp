@@ -51,6 +51,17 @@ test("projectStock — empty availabilities returns null fields", () => {
   assert.equal(result.errors, null);
 });
 
+test("projectStock — null availabilities (405 store-not-found) returns null fields", () => {
+  const result = projectStock(makeStockResponse({
+    availabilities: null,
+    errors: [{ code: 405, message: "ClassUnitCode doesn't exist" }],
+  }));
+  assert.equal(result.availableForCashCarry, false);
+  assert.equal(result.quantity, null);
+  assert.equal(result.messageType, null);
+  assert.equal(result.errors![0].meaning, "store ID does not exist");
+});
+
 // ── annotateStockErrors (via projectStock.errors) ────────────────────────────
 
 test("projectStock — 404 error annotated as 'item not stocked at this store'", () => {
