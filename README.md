@@ -145,6 +145,25 @@ npm run dev:http
 
 Requests must include `Accept: application/json, text/event-stream`. Stateless — no session management.
 
+## Deploy (HTTP transport)
+
+Tested target: **Railway** (also works on Render, Heroku, or any Procfile-aware host).
+
+```bash
+# 1. build
+npm install && npm run build
+
+# 2. run (Procfile: web: node dist/http.js)
+#    PORT is set automatically by the host
+node dist/http.js
+```
+
+The `Procfile` in the repo root declares `web: node dist/http.js`. `PORT` is read from the environment (default `3000`). No other env vars required.
+
+Endpoints after deploy:
+- `POST /mcp` — MCP Streamable HTTP (requires `Accept: application/json, text/event-stream`)
+- `GET /health` — returns `{"status":"ok"}`
+
 ## Store IDs
 
 Store metadata (ID → city label) lives in `src/data/stores.ts`. ~50 US stores are confirmed from `ikea.com/us/en/stores/<slug>/` pages.
