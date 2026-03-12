@@ -2,6 +2,24 @@
 
 Read-only MCP server for IKEA product search and in-store stock lookup.
 
+**Transports:** stdio (Claude Desktop / MCP CLI) · Streamable HTTP (remote clients)  
+**License:** MIT · **No auth required to run locally**
+
+## Capabilities
+| Tool | What it does |
+|---|---|
+| `search_products` | Search IKEA products by keyword |
+| `check_store_stock` | Check cash-and-carry stock at one store |
+| `compare_store_stock` | Compare stock across multiple stores |
+| `find_best_store_for_item` | Rank stores by in-stock quantity |
+
+## MVP limitations
+- Uses unofficial public IKEA APIs — no SLA, may break without notice
+- ~50 confirmed US stores in catalog (`src/data/stores.ts`); some IDs remain unverified
+- Cash-and-carry availability only — click-and-collect and home delivery not exposed
+- HTTP transport has no auth — do not expose publicly without adding authentication
+- Read-only — no cart, order, or account operations
+
 ## Tools
 
 ### `search_products`
@@ -163,6 +181,46 @@ The `Procfile` in the repo root declares `web: node dist/http.js`. `PORT` is rea
 Endpoints after deploy:
 - `POST /mcp` — MCP Streamable HTTP (requires `Accept: application/json, text/event-stream`)
 - `GET /health` — returns `{"status":"ok"}`
+
+> **Security note:** No auth is implemented in this MVP. Do not expose the `/mcp` endpoint publicly without adding authentication. The server is read-only — no cart, order, or account operations are possible.
+
+## Connecting a remote MCP client
+
+Point your MCP client at `https://<your-host>/mcp`.
+
+**Claude Desktop** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ikea-mcp": {
+      "type": "http",
+      "url": "https://<your-host>/mcp"
+    }
+  }
+}
+```
+
+**`.mcp.json`** (project-local, Claude Code):
+```json
+{
+  "mcpServers": {
+    "ikea-mcp": {
+      "type": "http",
+      "url": "https://<your-host>/mcp"
+    }
+  }
+}
+```
+
+**Manual / curl** (for debugging):
+```bash
+curl -X POST https://<your-host>/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+The `Accept: application/json, text/event-stream` header is required by the MCP SDK — requests without it will be rejected with a `-32000` error.
 
 ## Store IDs
 
