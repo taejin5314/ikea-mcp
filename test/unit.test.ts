@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { projectStock, type StockResponse } from "../src/services/ikea.js";
+import { projectStock, projectProduct, type StockResponse } from "../src/services/ikea.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -161,6 +161,45 @@ test("findBestStore — returns empty array when no store has stock", () => {
   ];
   const result = rankStores(input, 3);
   assert.deepEqual(result, []);
+});
+
+// ── projectProduct ────────────────────────────────────────────────────────────
+
+test("projectProduct — projects expected fields and excludes raw fields", () => {
+  const raw = {
+    id: "abc",
+    itemNo: "20522046",
+    itemNoGlobal: "20522046",
+    name: "BILLY",
+    typeName: "Bookcase",
+    itemMeasureReferenceText: '31 1/2x11x79 1/2"',
+    mainImageUrl: "https://example.com/img.jpg",
+    pipUrl: "https://www.ikea.com/us/en/p/billy-bookcase-white-20522046/",
+    onlineSellable: true,
+    lastChance: false,
+    ratingValue: 4.6,
+    ratingCount: 2620,
+    salesPrice: { currencyCode: "USD", numeral: 79 },
+    validDesignText: "white",
+  } as Parameters<typeof projectProduct>[0];
+
+  const out = projectProduct(raw);
+
+  assert.deepEqual(out, {
+    itemNo: "20522046",
+    name: "BILLY",
+    typeName: "Bookcase",
+    salesPrice: { amount: 79, currencyCode: "USD" },
+    pipUrl: "https://www.ikea.com/us/en/p/billy-bookcase-white-20522046/",
+    designText: "white",
+    measureText: '31 1/2x11x79 1/2"',
+    ratingValue: 4.6,
+    ratingCount: 2620,
+  });
+
+  assert.equal("id" in out, false);
+  assert.equal("mainImageUrl" in out, false);
+  assert.equal("onlineSellable" in out, false);
 });
 
 // ── search_products output projection ────────────────────────────────────────

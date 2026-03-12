@@ -135,6 +135,22 @@ export function projectStock(result: StockResponse) {
   };
 }
 
+// ── Product projection ────────────────────────────────────────────────────────
+
+export function projectProduct(p: SearchProduct) {
+  return {
+    itemNo: p.itemNo,
+    name: p.name,
+    typeName: p.typeName,
+    salesPrice: { amount: p.salesPrice.numeral, currencyCode: p.salesPrice.currencyCode },
+    pipUrl: p.pipUrl,
+    designText: p.validDesignText ?? null,
+    measureText: p.itemMeasureReferenceText ?? null,
+    ratingValue: p.ratingValue,
+    ratingCount: p.ratingCount,
+  };
+}
+
 // ── Service functions ─────────────────────────────────────────────────────────
 
 export async function searchProducts(
@@ -150,6 +166,22 @@ export async function searchProducts(
   return fetchJson<SearchResponse>(url, {
     "User-Agent": "Mozilla/5.0",
   });
+}
+
+export async function getProductDetails(
+  itemNo: string,
+  countryCode: string,
+  langCode: string
+): Promise<ReturnType<typeof projectProduct>> {
+  const result = await searchProducts(itemNo, countryCode, langCode, 5);
+  const items = result.searchResultPage.products.main.items;
+  const match = items.find(
+    (i) => i.product?.itemNo === itemNo || i.product?.itemNoGlobal === itemNo
+  );
+  if (!match) {
+    throw new Error(`item not found: ${itemNo}`);
+  }
+  return projectProduct(match.product);
 }
 
 export async function getStoreStock(

@@ -9,6 +9,7 @@ Read-only MCP server for IKEA product search and in-store stock lookup.
 | Tool | What it does |
 |---|---|
 | `search_products` | Search IKEA products by keyword |
+| `get_product_details` | Get details for a single product by item number |
 | `check_store_stock` | Check cash-and-carry stock at one store |
 | `compare_store_stock` | Compare stock across multiple stores |
 | `find_best_store_for_item` | Rank stores by in-stock quantity |
@@ -51,6 +52,36 @@ Search IKEA products by keyword.
   ]
 }
 ```
+
+---
+
+### `get_product_details`
+
+Get details for a single IKEA product by item number.
+
+**Input**
+| param | type | default | required |
+|---|---|---|---|
+| `itemNo` | string | — | yes |
+| `countryCode` | string | `"us"` | no |
+| `langCode` | string | `"en"` | no |
+
+**Output**
+```json
+{
+  "itemNo": "20522046",
+  "name": "BILLY",
+  "typeName": "Bookcase",
+  "salesPrice": { "amount": 79, "currencyCode": "USD" },
+  "pipUrl": "https://www.ikea.com/us/en/p/billy-bookcase-white-20522046/",
+  "designText": "white",
+  "measureText": "31 1/2x11x79 1/2 \"",
+  "ratingValue": 4.6,
+  "ratingCount": 2620
+}
+```
+
+> `shortDescription` and `materials` are not available from the underlying API.
 
 ---
 

@@ -122,6 +122,16 @@ try {
     const d = JSON.parse(best.result.content[0].text);
     console.log(`find_best_store_for_item OK — ${d.length} result(s), top: storeId=${d[0]?.storeId} qty=${d[0]?.quantity}`);
   }
+  // get_product_details
+  send({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "get_product_details", arguments: { itemNo: "20522046" } } });
+  const gpd = await readNext(15000);
+  if (gpd.error) {
+    console.log("get_product_details FAIL:", JSON.stringify(gpd.error));
+  } else {
+    const d = JSON.parse(gpd.result.content[0].text);
+    const ok = d.itemNo === "20522046" && d.name && d.salesPrice?.amount;
+    console.log(`get_product_details ${ok ? "OK" : "MISMATCH"} — name: ${d.name} type: ${d.typeName} price: ${d.salesPrice?.amount} measure: ${d.measureText}`);
+  }
 } catch (e) {
   console.error("ERROR:", e.message);
 } finally {
