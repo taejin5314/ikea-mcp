@@ -61,7 +61,7 @@ Check stock at a single IKEA store.
 On error (e.g. item not carried):
 ```json
 {
-  "storeId": "448",
+  "storeId": "026",
   "availableForCashCarry": false,
   "quantity": null,
   "messageType": null,
@@ -86,6 +86,34 @@ Compare stock for one item across multiple stores.
 
 ---
 
+### `find_best_store_for_item`
+
+Find stores with the highest in-stock quantity for an item. Queries stores in parallel, excludes invalid stores (405), out-of-stock stores (404), and stores with unknown quantity. Results sorted by quantity descending; ties broken by `storeId` lexicographically.
+
+**Input**
+| param | type | default | required |
+|---|---|---|---|
+| `itemNo` | string | — | yes |
+| `storeIds` | string[] | all known stores | no |
+| `maxResults` | number | `3` (max 10) | no |
+
+**Output** — array of matching stores, up to `maxResults`:
+```json
+[
+  {
+    "storeId": "399",
+    "storeLabel": "399 (Burbank, CA)",
+    "availableForCashCarry": true,
+    "quantity": 104,
+    "messageType": "HIGH_IN_STOCK"
+  }
+]
+```
+
+Returns `[]` if no store has the item in stock. "All known stores" means the ~50 entries in `src/data/stores.ts`.
+
+---
+
 ## Build and test
 
 ```bash
@@ -96,11 +124,42 @@ npm test             # unit tests
 node smoke.mjs       # end-to-end stdio smoke test
 ```
 
-`smoke.mjs` exercises all 3 tools against the live IKEA API and prints pass/fail lines to stdout.
+`smoke.mjs` exercises all 4 tools against the live IKEA API and prints pass/fail lines to stdout.
+
+## Transports
+
+**stdio** (default — for Claude Desktop / MCP CLI):
+```bash
+node dist/index.js
+# or during dev:
+npm run dev
+```
+
+**Streamable HTTP** (for remote / network clients):
+```bash
+node dist/http.js          # listens on http://localhost:3000/mcp
+PORT=8080 node dist/http.js
+# or during dev:
+npm run dev:http
+```
+
+Requests must include `Accept: application/json, text/event-stream`. Stateless — no session management.
+
+## Store IDs
+
+Store metadata (ID → city label) lives in `src/data/stores.ts`. ~50 US stores are confirmed from `ikea.com/us/en/stores/<slug>/` pages.
+
+Confirmed compatible `storeId` formats:
+- Standard 3-digit: `"399"` (Burbank, CA)
+- Leading-zero 3-digit: `"026"` (Canton, MI), `"042"` (Tampa, FL)
+- 4-digit: `"921"` (Brooklyn, NY), `"1129"` (Syracuse, NY)
+
+Some stores remain unconfirmed (no store page ID found or not yet probed). A few valid-looking IDs from the stock API have no known city mapping — see TODO comments in `stores.ts`.
+
+An invalid or unsupported `storeId` returns a 405 error in the `errors` array.
 
 ## Limitations
 
-- US store IDs only (tested; other country codes are untested).
 - Uses unofficial public IKEA APIs — no SLA, no auth required, may break without notice.
 - Read-only: no cart, no order, no account operations.
 - `compare_store_stock` fires all store requests in parallel — large `storeIds` arrays may hit rate limits.

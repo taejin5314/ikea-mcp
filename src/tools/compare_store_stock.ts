@@ -1,5 +1,6 @@
 import { CompareStoreStockInput } from "../schemas/index.js";
 import { getStoreStock, projectStock } from "../services/ikea.js";
+import { storeLabel } from "../data/stores.js";
 
 export const compareStoreStockTool = {
   name: "compare_store_stock",
@@ -17,10 +18,14 @@ export const compareStoreStockTool = {
     const input = CompareStoreStockInput.parse(rawInput);
     const results = await Promise.all(
       input.storeIds.map((storeId) =>
-        getStoreStock(input.itemNo, storeId, input.countryCode).then((data) => ({
-          storeId,
-          ...projectStock(data),
-        }))
+        getStoreStock(input.itemNo, storeId, input.countryCode).then((data) => {
+          const label = storeLabel(storeId);
+          return {
+            storeId,
+            ...(label ? { storeLabel: label } : {}),
+            ...projectStock(data),
+          };
+        })
       )
     );
     return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };

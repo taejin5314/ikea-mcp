@@ -19,6 +19,13 @@ export const CompareStoreStockInput = z.object({
   countryCode: z.string().length(2).default("us"),
 });
 
+export const FindBestStoreInput = z.object({
+  itemNo: z.string().min(1),
+  storeIds: z.array(z.string().min(1)).optional(),
+  maxResults: z.number().int().min(1).max(10).default(3),
+});
+
 export type SearchProductsInputType = z.infer<typeof SearchProductsInput>;
 export type CheckStoreStockInputType = z.infer<typeof CheckStoreStockInput>;
 export type CompareStoreStockInputType = z.infer<typeof CompareStoreStockInput>;
+export type FindBestStoreInputType = z.infer<typeof FindBestStoreInput>;

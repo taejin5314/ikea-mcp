@@ -1,5 +1,6 @@
 import { CheckStoreStockInput } from "../schemas/index.js";
 import { getStoreStock, projectStock } from "../services/ikea.js";
+import { storeLabel } from "../data/stores.js";
 
 export const checkStoreStockTool = {
   name: "check_store_stock",
@@ -16,7 +17,12 @@ export const checkStoreStockTool = {
   async handler(rawInput: unknown) {
     const input = CheckStoreStockInput.parse(rawInput);
     const result = await getStoreStock(input.itemNo, input.storeId, input.countryCode);
-    const output = { storeId: input.storeId, ...projectStock(result) };
+    const label = storeLabel(input.storeId);
+    const output = {
+      storeId: input.storeId,
+      ...(label ? { storeLabel: label } : {}),
+      ...projectStock(result),
+    };
     return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
   },
 };

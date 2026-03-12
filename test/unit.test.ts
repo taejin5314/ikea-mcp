@@ -39,7 +39,7 @@ test("projectStock — stocked item returns correct shape", () => {
     availableForCashCarry: true,
     quantity: 42,
     messageType: "HIGH_IN_STOCK",
-    errors: null,
+    errors: [],
   });
 });
 
@@ -48,7 +48,7 @@ test("projectStock — empty availabilities returns null fields", () => {
   assert.equal(result.availableForCashCarry, false);
   assert.equal(result.quantity, null);
   assert.equal(result.messageType, null);
-  assert.equal(result.errors, null);
+  assert.deepEqual(result.errors, []);
 });
 
 test("projectStock — null availabilities (405 store-not-found) returns null fields", () => {
@@ -94,6 +94,73 @@ test("projectStock — unknown error code annotated as 'unknown'", () => {
     })
   );
   assert.equal(result.errors![0].meaning, "unknown");
+});
+
+// ── find_best_store_for_item ranking logic ────────────────────────────────────
+
+function rankStores(
+  entries: { storeId: string; availableForCashCarry: boolean; quantity: number | null }[],
+  maxResults: number
+) {
+  return entries
+    .filter((r) => r.availableForCashCarry && r.quantity !== null)
+    .sort((a, b) => {
+      const diff = (b.quantity ?? 0) - (a.quantity ?? 0);
+      return diff !== 0 ? diff : a.storeId.localeCompare(b.storeId);
+    })
+    .slice(0, maxResults);
+}
+
+test("findBestStore — excludes unavailable and null-qty stores", () => {
+  const input = [
+    { storeId: "399", availableForCashCarry: true, quantity: 50 },
+    { storeId: "026", availableForCashCarry: false, quantity: 100 }, // not available
+    { storeId: "921", availableForCashCarry: true, quantity: null }, // null qty
+  ];
+  const result = rankStores(input, 3);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].storeId, "399");
+});
+
+test("findBestStore — sorts descending by quantity", () => {
+  const input = [
+    { storeId: "399", availableForCashCarry: true, quantity: 20 },
+    { storeId: "026", availableForCashCarry: true, quantity: 80 },
+    { storeId: "921", availableForCashCarry: true, quantity: 50 },
+  ];
+  const result = rankStores(input, 3);
+  assert.deepEqual(result.map((r) => r.storeId), ["026", "921", "399"]);
+});
+
+test("findBestStore — tie-breaks by storeId lexicographic", () => {
+  const input = [
+    { storeId: "399", availableForCashCarry: true, quantity: 42 },
+    { storeId: "026", availableForCashCarry: true, quantity: 42 },
+    { storeId: "921", availableForCashCarry: true, quantity: 42 },
+  ];
+  const result = rankStores(input, 3);
+  assert.deepEqual(result.map((r) => r.storeId), ["026", "399", "921"]);
+});
+
+test("findBestStore — respects maxResults", () => {
+  const input = [
+    { storeId: "399", availableForCashCarry: true, quantity: 10 },
+    { storeId: "026", availableForCashCarry: true, quantity: 20 },
+    { storeId: "921", availableForCashCarry: true, quantity: 30 },
+    { storeId: "042", availableForCashCarry: true, quantity: 40 },
+  ];
+  const result = rankStores(input, 2);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].storeId, "042");
+  assert.equal(result[1].storeId, "921");
+});
+
+test("findBestStore — returns empty array when no store has stock", () => {
+  const input = [
+    { storeId: "999", availableForCashCarry: false, quantity: null },
+  ];
+  const result = rankStores(input, 3);
+  assert.deepEqual(result, []);
 });
 
 // ── search_products output projection ────────────────────────────────────────

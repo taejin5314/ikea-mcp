@@ -131,7 +131,7 @@ export function projectStock(result: StockResponse) {
     availableForCashCarry: a?.availableForCashCarry ?? false,
     quantity: a?.buyingOption.cashCarry.availability.quantity ?? null,
     messageType: a?.buyingOption.cashCarry.availability.probability.thisDay.messageType ?? null,
-    errors: annotateStockErrors(result.errors) ?? null,
+    errors: annotateStockErrors(result.errors) ?? [],
   };
 }
 

@@ -61,28 +61,66 @@ try {
     console.log("search_products OK — total:", d.total, "name:", item?.name, "itemNo:", item?.itemNo);
   }
 
-  // check_store_stock
+  // check_store_stock — standard 3-digit (399 Burbank CA)
   send({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "check_store_stock", arguments: { itemNo: "20522046", storeId: "399" } } });
   const cs = await readNext(10000);
   if (cs.error) {
-    console.log("check_store_stock FAIL:", JSON.stringify(cs.error));
+    console.log("check_store_stock[399] FAIL:", JSON.stringify(cs.error));
   } else {
     const d = JSON.parse(cs.result.content[0].text);
-console.log("check_store_stock OK — qty:", d.quantity, "status:", d.messageType);
+    console.log("check_store_stock[399] OK — label:", d.storeLabel, "qty:", d.quantity, "status:", d.messageType);
   }
 
-  // compare_store_stock (399=Burbank CA, 448=Canton MI)
-  send({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "compare_store_stock", arguments: { itemNo: "20522046", storeIds: ["399", "448"] } } });
+  // check_store_stock — leading-zero 3-digit (026 Canton MI)
+  send({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "check_store_stock", arguments: { itemNo: "20522046", storeId: "026" } } });
+  const cs026 = await readNext(10000);
+  if (cs026.error) {
+    console.log("check_store_stock[026] FAIL:", JSON.stringify(cs026.error));
+  } else {
+    const d = JSON.parse(cs026.result.content[0].text);
+    console.log("check_store_stock[026] OK — label:", d.storeLabel, "qty:", d.quantity, "err:", d.errors?.[0]?.code ?? "none");
+  }
+
+  // check_store_stock — 4-digit (921 Brooklyn NY)
+  send({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "check_store_stock", arguments: { itemNo: "20522046", storeId: "921" } } });
+  const cs921 = await readNext(10000);
+  if (cs921.error) {
+    console.log("check_store_stock[921] FAIL:", JSON.stringify(cs921.error));
+  } else {
+    const d = JSON.parse(cs921.result.content[0].text);
+    console.log("check_store_stock[921] OK — label:", d.storeLabel, "qty:", d.quantity, "err:", d.errors?.[0]?.code ?? "none");
+  }
+
+  // check_store_stock — invalid store (999 → expect 405)
+  send({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "check_store_stock", arguments: { itemNo: "20522046", storeId: "999" } } });
+  const cs999 = await readNext(10000);
+  if (cs999.error) {
+    console.log("check_store_stock[999] FAIL:", JSON.stringify(cs999.error));
+  } else {
+    const d = JSON.parse(cs999.result.content[0].text);
+    const code = d.errors?.[0]?.code;
+    console.log(`check_store_stock[999] ${code === 405 ? "OK (405 as expected)" : "UNEXPECTED — code: " + code}`);
+  }
+
+  // compare_store_stock — mixed: standard + leading-zero + 4-digit
+  send({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "compare_store_stock", arguments: { itemNo: "20522046", storeIds: ["399", "026", "921"] } } });
   const cmp = await readNext(10000);
   if (cmp.error) {
     console.log("compare_store_stock FAIL:", JSON.stringify(cmp.error));
   } else {
     const d = JSON.parse(cmp.result.content[0].text);
     d.forEach((r) => {
-      const qty = r.quantity;
-      const err = r.errors?.[0]?.message;
-      console.log(`compare_store_stock store ${r.storeId} — qty: ${qty ?? "n/a"} err: ${err ?? "none"}`);
+      console.log(`compare_store_stock[${r.storeId}] — label: ${r.storeLabel ?? "none"} qty: ${r.quantity ?? "n/a"} err: ${r.errors?.[0]?.code ?? "none"}`);
     });
+  }
+  // find_best_store_for_item — explicit 3-store subset
+  send({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "find_best_store_for_item", arguments: { itemNo: "20522046", storeIds: ["399", "026", "921"], maxResults: 3 } } });
+  const best = await readNext(15000);
+  if (best.error) {
+    console.log("find_best_store_for_item FAIL:", JSON.stringify(best.error));
+  } else {
+    const d = JSON.parse(best.result.content[0].text);
+    console.log(`find_best_store_for_item OK — ${d.length} result(s), top: storeId=${d[0]?.storeId} qty=${d[0]?.quantity}`);
   }
 } catch (e) {
   console.error("ERROR:", e.message);
