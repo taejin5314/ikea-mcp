@@ -164,6 +164,28 @@ try {
     const hasCA = d.some((r) => r.storeLabel?.includes("CA"));
     console.log(`find_best_store_for_item[mixed] ${hasCA ? "OK" : "NO_CA_RESULTS"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
   }
+
+  // compare_store_stock — countryCode=CA (no storeIds)
+  send({ jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "compare_store_stock", arguments: { itemNo: "20522046", countryCode: "CA" } } });
+  const cmpCA = await readNext(60000);
+  if (cmpCA.error) {
+    console.log("compare_store_stock[countryCode=CA] FAIL:", JSON.stringify(cmpCA.error));
+  } else {
+    const d = JSON.parse(cmpCA.result.content[0].text);
+    const allCA = d.every((r) => r.storeLabel?.match(/,\s+[A-Z]{2},\s+CA\)$/));
+    console.log(`compare_store_stock[countryCode=CA] ${allCA ? "OK" : "LABEL_MISMATCH"} — ${d.length} store(s)`);
+  }
+
+  // find_best_store_for_item — countryCode filter (CA only, no storeIds)
+  send({ jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "find_best_store_for_item", arguments: { itemNo: "20522046", countryCode: "CA", maxResults: 3 } } });
+  const bestCCFilter = await readNext(30000);
+  if (bestCCFilter.error) {
+    console.log("find_best_store_for_item[countryCode=CA] FAIL:", JSON.stringify(bestCCFilter.error));
+  } else {
+    const d = JSON.parse(bestCCFilter.result.content[0].text);
+    const allCA = d.every((r) => r.storeLabel?.endsWith(", CA)"));
+    console.log(`find_best_store_for_item[countryCode=CA] ${allCA ? "OK" : "LABEL_MISMATCH"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
+  }
 } catch (e) {
   console.error("ERROR:", e.message);
 } finally {

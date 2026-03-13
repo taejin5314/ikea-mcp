@@ -84,3 +84,13 @@ export const STORE_LABELS: Record<string, string> = {
 export function storeLabel(storeId: string): string | undefined {
   return STORE_LABELS[storeId];
 }
+
+// Canada labels have a province code before the country: "(City, BC, CA)"
+// US state abbreviations like California "(City, CA)" must not match.
+const CA_LABEL_RE = /,\s+[A-Z]{2},\s+CA\)$/;
+
+export function storeIdsByCountry(countryCode: "US" | "CA"): string[] {
+  return Object.entries(STORE_LABELS)
+    .filter(([, label]) => countryCode === "CA" ? CA_LABEL_RE.test(label) : !CA_LABEL_RE.test(label))
+    .map(([id]) => id);
+}

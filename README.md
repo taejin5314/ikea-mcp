@@ -12,8 +12,8 @@ Read-only MCP server for IKEA product search and in-store stock lookup.
 | `get_product_details` | Get details for a single product by item number |
 | `check_store_stock` | Check cash-and-carry stock at one store |
 | `check_multi_item_stock` | Check stock for multiple items at one store |
-| `compare_store_stock` | Compare stock across multiple stores |
-| `find_best_store_for_item` | Rank stores by in-stock quantity |
+| `compare_store_stock` | Compare stock across explicit stores or a country catalog |
+| `find_best_store_for_item` | Rank stores by in-stock quantity (optionally filter by country) |
 
 ## MVP limitations
 - Uses unofficial public IKEA APIs — no SLA, may break without notice
@@ -123,14 +123,24 @@ On error (e.g. item not carried):
 
 ### `compare_store_stock`
 
-Compare stock for one item across multiple stores.
+Compare stock for one item across multiple stores. Provide explicit `storeIds`, or use `countryCode` to expand to all catalog stores for that country. At least one of `storeIds` or `countryCode` is required.
 
 **Input**
 | param | type | default | required |
 |---|---|---|---|
 | `itemNo` | string | — | yes |
-| `storeIds` | string[] (min 2) | — | yes |
-| `countryCode` | string | `"us"` | no |
+| `storeIds` | string[] (min 2) | — | one of `storeIds`/`countryCode` |
+| `countryCode` | `"US"` \| `"CA"` | — | one of `storeIds`/`countryCode` |
+
+`storeIds` takes precedence — if both are provided, `countryCode` only sets the IKEA API locale.
+
+**Examples**
+```json
+{ "itemNo": "20522046", "storeIds": ["399", "026", "921"] }
+```
+```json
+{ "itemNo": "20522046", "countryCode": "CA" }
+```
 
 **Output** — array of the same shape as `check_store_stock` (one entry per store).
 
@@ -176,6 +186,9 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 | `itemNo` | string | — | yes |
 | `storeIds` | string[] | all known stores | no |
 | `maxResults` | number | `3` (max 10) | no |
+| `countryCode` | `"US"` \| `"CA"` | — | no |
+
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all ~65 known stores.
 
 **Output** — array of matching stores, up to `maxResults`:
 ```json
@@ -365,6 +378,6 @@ An invalid or unsupported `storeId` returns a 405 error in the `errors` array.
 
 - Uses unofficial public IKEA APIs — no SLA, no auth required, may break without notice.
 - Read-only: no cart, no order, no account operations.
-- `compare_store_stock` fires all store requests in parallel — large `storeIds` arrays may hit rate limits.
+- `compare_store_stock` fires all store requests in parallel — large `storeIds` arrays or a full `countryCode` expansion may hit rate limits.
 - Click-and-collect and home-delivery availability are not exposed (cash-and-carry only).
 - `size` in `search_products` is capped by IKEA's API (observed max ~24 per page; `total` reflects the full catalogue count).

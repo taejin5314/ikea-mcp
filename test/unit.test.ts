@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
+import { storeIdsByCountry, STORE_LABELS } from "../src/data/stores.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -351,6 +352,85 @@ test("projectMultiItemStock — invalid store (405) all items get store error", 
     assert.equal(r.errors[0].code, 405);
     assert.equal(r.errors[0].meaning, "store ID does not exist");
   });
+});
+
+// ── compareStoreStock input resolution ───────────────────────────────────────
+
+import { CompareStoreStockInput } from "../src/schemas/index.js";
+
+test("compareStoreStock — storeIds provided, no countryCode: uses storeIds", () => {
+  const input = CompareStoreStockInput.parse({ itemNo: "20522046", storeIds: ["399", "026"] });
+  assert.deepEqual(input.storeIds, ["399", "026"]);
+  assert.equal(input.countryCode, undefined);
+});
+
+test("compareStoreStock — countryCode US, no storeIds: parses and storeIds undefined", () => {
+  const input = CompareStoreStockInput.parse({ itemNo: "20522046", countryCode: "US" });
+  assert.equal(input.storeIds, undefined);
+  assert.equal(input.countryCode, "US");
+  const ids = storeIdsByCountry("US");
+  assert.ok(ids.length > 0);
+  assert.ok(ids.includes("399"));
+});
+
+test("compareStoreStock — countryCode CA, no storeIds: parses and storeIds undefined", () => {
+  const input = CompareStoreStockInput.parse({ itemNo: "20522046", countryCode: "CA" });
+  assert.equal(input.storeIds, undefined);
+  assert.equal(input.countryCode, "CA");
+  const ids = storeIdsByCountry("CA");
+  assert.ok(ids.length > 0);
+  assert.ok(ids.includes("149"));
+});
+
+test("compareStoreStock — neither storeIds nor countryCode: throws", () => {
+  assert.throws(
+    () => CompareStoreStockInput.parse({ itemNo: "20522046" }),
+    /provide storeIds or countryCode/
+  );
+});
+
+test("compareStoreStock — storeIds takes precedence over countryCode", () => {
+  const input = CompareStoreStockInput.parse({ itemNo: "20522046", storeIds: ["399", "026"], countryCode: "CA" });
+  assert.deepEqual(input.storeIds, ["399", "026"]);
+  assert.equal(input.countryCode, "CA");
+  // handler uses storeIds when present; CA countryCode is still captured for API locale
+});
+
+// ── storeIdsByCountry ─────────────────────────────────────────────────────────
+
+test("storeIdsByCountry — CA returns only CA stores", () => {
+  const ids = storeIdsByCountry("CA");
+  assert.ok(ids.length > 0);
+  ids.forEach((id) => {
+    assert.match(STORE_LABELS[id], /,\s+[A-Z]{2},\s+CA\)$/, `expected CA label for ${id}: ${STORE_LABELS[id]}`);
+  });
+});
+
+test("storeIdsByCountry — US returns only non-CA stores", () => {
+  const ids = storeIdsByCountry("US");
+  assert.ok(ids.length > 0);
+  ids.forEach((id) => {
+    assert.doesNotMatch(STORE_LABELS[id], /,\s+[A-Z]{2},\s+CA\)$/, `unexpected CA label for ${id}: ${STORE_LABELS[id]}`);
+  });
+});
+
+test("storeIdsByCountry — US and CA partition all stores exactly", () => {
+  const us = storeIdsByCountry("US");
+  const ca = storeIdsByCountry("CA");
+  const all = Object.keys(STORE_LABELS);
+  assert.equal(us.length + ca.length, all.length);
+  const combined = new Set([...us, ...ca]);
+  assert.equal(combined.size, all.length);
+});
+
+test("storeIdsByCountry — known CA store 149 is in CA set", () => {
+  const ca = storeIdsByCountry("CA");
+  assert.ok(ca.includes("149"));
+});
+
+test("storeIdsByCountry — known US store 399 is in US set", () => {
+  const us = storeIdsByCountry("US");
+  assert.ok(us.includes("399"));
 });
 
 test("projectMultiItemStock — errors always array, never null", () => {

@@ -1,23 +1,25 @@
 import { FindBestStoreInput } from "../schemas/index.js";
 import { getStoreStock, projectStock } from "../services/ikea.js";
-import { STORE_LABELS, storeLabel } from "../data/stores.js";
+import { STORE_LABELS, storeLabel, storeIdsByCountry } from "../data/stores.js";
 
 export const findBestStoreForItemTool = {
   name: "find_best_store_for_item",
   description:
-    "Find stores with the highest in-stock quantity for an item. Returns up to maxResults stores sorted by quantity descending.",
+    "Find stores with the highest in-stock quantity for an item. Returns up to maxResults stores sorted by quantity descending. Optionally filter by countryCode ('US' or 'CA'). Explicit storeIds take precedence over countryCode.",
   inputSchema: {
     type: "object",
     properties: {
       itemNo: { type: "string" },
       storeIds: { type: "array", items: { type: "string" } },
       maxResults: { type: "number", default: 3 },
+      countryCode: { type: "string", enum: ["US", "CA"] },
     },
     required: ["itemNo"],
   },
   async handler(rawInput: unknown) {
     const input = FindBestStoreInput.parse(rawInput);
-    const targetIds = input.storeIds ?? Object.keys(STORE_LABELS);
+    const targetIds = input.storeIds
+      ?? (input.countryCode ? storeIdsByCountry(input.countryCode) : Object.keys(STORE_LABELS));
 
     const results = await Promise.all(
       targetIds.map(async (storeId) => {

@@ -15,14 +15,18 @@ export const CheckStoreStockInput = z.object({
 
 export const CompareStoreStockInput = z.object({
   itemNo: z.string().min(1),
-  storeIds: z.array(z.string().min(1)).min(2).max(10),
-  countryCode: z.string().length(2).default("us"),
-});
+  storeIds: z.array(z.string().min(1)).min(2).max(10).optional(),
+  countryCode: z.enum(["US", "CA"]).optional(),
+}).refine(
+  (d) => d.storeIds !== undefined || d.countryCode !== undefined,
+  { message: "provide storeIds or countryCode" }
+);
 
 export const FindBestStoreInput = z.object({
   itemNo: z.string().min(1),
   storeIds: z.array(z.string().min(1)).optional(),
   maxResults: z.number().int().min(1).max(10).default(3),
+  countryCode: z.enum(["US", "CA"]).optional(),
 });
 
 export const GetProductDetailsInput = z.object({
