@@ -106,7 +106,7 @@ interface StockError {
   // Confirmed: 404 = item not stocked at this store | 405 = store ID does not exist
   code: number;
   message: string;
-  // TODO: details not typed
+  details?: { itemNo?: string; classUnitCode?: string; classUnitType?: string };
 }
 
 export interface StockResponse {
@@ -133,6 +133,55 @@ export function projectStock(result: StockResponse) {
     messageType: a?.buyingOption.cashCarry.availability.probability.thisDay.messageType ?? null,
     errors: annotateStockErrors(result.errors) ?? [],
   };
+}
+
+export function projectMultiItemStock(result: StockResponse, itemNos: string[]) {
+  // Build lookup maps
+  const byItemNo = new Map<string, StockAvailabilityItem>();
+  for (const a of result.availabilities ?? []) {
+    byItemNo.set(a.itemKey.itemNo, a);
+  }
+  const errorByItemNo = new Map<string, StockError>();
+  for (const e of result.errors ?? []) {
+    if (e.details?.itemNo) errorByItemNo.set(e.details.itemNo, e);
+  }
+  // 405 = store doesn't exist — applies to all items
+  const storeError = result.errors?.find((e) => e.code === 405);
+
+  return itemNos.map((itemNo) => {
+    if (storeError) {
+      return {
+        itemNo,
+        availableForCashCarry: false,
+        quantity: null as number | null,
+        messageType: null as string | null,
+        errors: [{ ...storeError, meaning: "store ID does not exist" }],
+      };
+    }
+    const a = byItemNo.get(itemNo);
+    if (a) {
+      return {
+        itemNo,
+        availableForCashCarry: a.availableForCashCarry,
+        quantity: a.buyingOption.cashCarry.availability.quantity,
+        messageType: a.buyingOption.cashCarry.availability.probability.thisDay.messageType,
+        errors: [] as typeof annotatedNotStocked,
+      };
+    }
+    const itemErr = errorByItemNo.get(itemNo);
+    const annotatedNotStocked = [
+      itemErr
+        ? { ...itemErr, meaning: itemErr.code === 404 ? "item not stocked at this store" : "unknown" }
+        : { code: 404, message: "Not found", meaning: "item not stocked at this store" },
+    ];
+    return {
+      itemNo,
+      availableForCashCarry: false,
+      quantity: null as number | null,
+      messageType: null as string | null,
+      errors: annotatedNotStocked,
+    };
+  });
 }
 
 // ── Product projection ────────────────────────────────────────────────────────
@@ -182,6 +231,18 @@ export async function getProductDetails(
     throw new Error(`item not found: ${itemNo}`);
   }
   return projectProduct(match.product);
+}
+
+export async function getMultiItemStock(
+  itemNos: string[],
+  storeId: string
+): Promise<StockResponse> {
+  const url =
+    `${STOCK_BASE}/sto/${storeId}` +
+    `?itemNos=${itemNos.map(encodeURIComponent).join(",")}&expand=StoresList,Restocks`;
+  return fetchJson<StockResponse>(url, {
+    "X-Client-Id": STOCK_CLIENT_ID,
+  });
 }
 
 export async function getStoreStock(

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { projectStock, projectProduct, type StockResponse } from "../src/services/ikea.js";
+import { projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -272,4 +272,91 @@ test("search_products projection — selects expected fields only", () => {
   assert.equal("id" in item, false);
   assert.equal("mainImageUrl" in item, false);
   assert.equal("onlineSellable" in item, false);
+});
+
+// ── projectMultiItemStock ─────────────────────────────────────────────────────
+
+function makeAvailability(itemNo: string, quantity: number) {
+  return {
+    availableForCashCarry: true,
+    availableForClickCollect: false,
+    buyingOption: {
+      cashCarry: {
+        availability: {
+          quantity,
+          updateDateTime: "2026-03-12T00:00:00Z",
+          probability: { thisDay: { messageType: "HIGH_IN_STOCK" } },
+        },
+        eligibleForStockNotification: false,
+        unitOfMeasure: "PIECES",
+        updateDateTime: "2026-03-12T00:00:00Z",
+      },
+    },
+    classUnitKey: { classUnitCode: "399", classUnitType: "STO" },
+    itemKey: { itemNo, itemType: "ART" },
+  };
+}
+
+test("projectMultiItemStock — multiple valid items returns correct shape", () => {
+  const result = projectMultiItemStock(
+    { availabilities: [makeAvailability("20522046", 10), makeAvailability("40477340", 5)], timestamp: "t" },
+    ["20522046", "40477340"]
+  );
+  assert.equal(result.length, 2);
+  assert.equal(result[0].itemNo, "20522046");
+  assert.equal(result[0].quantity, 10);
+  assert.deepEqual(result[0].errors, []);
+  assert.equal(result[1].itemNo, "40477340");
+  assert.equal(result[1].quantity, 5);
+});
+
+test("projectMultiItemStock — preserves input order", () => {
+  const result = projectMultiItemStock(
+    { availabilities: [makeAvailability("40477340", 5), makeAvailability("20522046", 10)], timestamp: "t" },
+    ["20522046", "40477340"]
+  );
+  assert.equal(result[0].itemNo, "20522046");
+  assert.equal(result[1].itemNo, "40477340");
+});
+
+test("projectMultiItemStock — one stocked one not stocked", () => {
+  const result = projectMultiItemStock(
+    {
+      availabilities: [makeAvailability("20522046", 10)],
+      errors: [{ code: 404, message: "Not found", details: { itemNo: "99999999" } }],
+      timestamp: "t",
+    },
+    ["20522046", "99999999"]
+  );
+  assert.equal(result[0].availableForCashCarry, true);
+  assert.deepEqual(result[0].errors, []);
+  assert.equal(result[1].availableForCashCarry, false);
+  assert.equal(result[1].quantity, null);
+  assert.equal(result[1].errors.length, 1);
+  assert.equal(result[1].errors[0].code, 404);
+});
+
+test("projectMultiItemStock — invalid store (405) all items get store error", () => {
+  const result = projectMultiItemStock(
+    {
+      availabilities: null,
+      errors: [{ code: 405, message: "Store not found" }],
+      timestamp: "t",
+    },
+    ["20522046", "40477340"]
+  );
+  assert.equal(result.length, 2);
+  result.forEach((r) => {
+    assert.equal(r.availableForCashCarry, false);
+    assert.equal(r.errors[0].code, 405);
+    assert.equal(r.errors[0].meaning, "store ID does not exist");
+  });
+});
+
+test("projectMultiItemStock — errors always array, never null", () => {
+  const result = projectMultiItemStock(
+    { availabilities: [makeAvailability("20522046", 1)], timestamp: "t" },
+    ["20522046"]
+  );
+  assert.ok(Array.isArray(result[0].errors));
 });

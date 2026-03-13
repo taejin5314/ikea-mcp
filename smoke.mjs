@@ -132,6 +132,17 @@ try {
     const ok = d.itemNo === "20522046" && d.name && d.salesPrice?.amount;
     console.log(`get_product_details ${ok ? "OK" : "MISMATCH"} — name: ${d.name} type: ${d.typeName} price: ${d.salesPrice?.amount} measure: ${d.measureText}`);
   }
+  // check_multi_item_stock — two real items at store 399
+  send({ jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "check_multi_item_stock", arguments: { storeId: "399", itemNos: ["20522046", "40477340"] } } });
+  const multi = await readNext(15000);
+  if (multi.error) {
+    console.log("check_multi_item_stock FAIL:", JSON.stringify(multi.error));
+  } else {
+    const d = JSON.parse(multi.result.content[0].text);
+    const ordered = d[0]?.itemNo === "20522046" && d[1]?.itemNo === "40477340";
+    const allArrayErrors = d.every((r) => Array.isArray(r.errors));
+    console.log(`check_multi_item_stock ${ordered && allArrayErrors ? "OK" : "MISMATCH"} — items: ${d.length}, qty[0]: ${d[0]?.quantity}, qty[1]: ${d[1]?.quantity}`);
+  }
 } catch (e) {
   console.error("ERROR:", e.message);
 } finally {

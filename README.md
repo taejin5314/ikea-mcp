@@ -11,6 +11,7 @@ Read-only MCP server for IKEA product search and in-store stock lookup.
 | `search_products` | Search IKEA products by keyword |
 | `get_product_details` | Get details for a single product by item number |
 | `check_store_stock` | Check cash-and-carry stock at one store |
+| `check_multi_item_stock` | Check stock for multiple items at one store |
 | `compare_store_stock` | Compare stock across multiple stores |
 | `find_best_store_for_item` | Rank stores by in-stock quantity |
 
@@ -135,6 +136,36 @@ Compare stock for one item across multiple stores.
 
 ---
 
+### `check_multi_item_stock`
+
+Check cash-and-carry stock for multiple items at a single store in one call.
+
+**Input**
+| param | type | default | required |
+|---|---|---|---|
+| `storeId` | string | — | yes |
+| `itemNos` | string[] (min 1, max 20) | — | yes |
+
+**Output** — array of per-item stock entries in the same order as `itemNos`:
+
+```json
+[
+  {
+    "itemNo": "20522046",
+    "storeId": "399",
+    "storeLabel": "399 (Burbank, CA)",
+    "availableForCashCarry": true,
+    "quantity": 104,
+    "messageType": "HIGH_IN_STOCK",
+    "errors": []
+  }
+]
+```
+
+Items not stocked at that store appear with `availableForCashCarry: false`, `quantity: null`, and a 404 error entry. An invalid `storeId` (405) returns that error on every entry.
+
+---
+
 ### `find_best_store_for_item`
 
 Find stores with the highest in-stock quantity for an item. Queries stores in parallel, excludes invalid stores (405), out-of-stock stores (404), and stores with unknown quantity. Results sorted by quantity descending; ties broken by `storeId` lexicographically.
@@ -179,9 +210,9 @@ node smoke.mjs       # end-to-end stdio smoke test
 
 **stdio** (default — for Claude Desktop / MCP CLI):
 ```bash
-node dist/index.js
-# or during dev:
-npm run dev
+npx ikea-mcp          # after npm install (uses bin entry)
+node dist/index.js    # after local build
+npm run dev           # dev (tsx, no build needed)
 ```
 
 **Streamable HTTP** (for remote / network clients):
@@ -215,7 +246,23 @@ Endpoints after deploy:
 
 > **Security note:** No auth is implemented in this MVP. Do not expose the `/mcp` endpoint publicly without adding authentication. The server is read-only — no cart, order, or account operations are possible.
 
-## Connecting a remote MCP client
+## Connecting a local MCP client (stdio)
+
+**Claude Desktop** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ikea-mcp": {
+      "command": "npx",
+      "args": ["-y", "ikea-mcp"]
+    }
+  }
+}
+```
+
+---
+
+## Connecting a remote MCP client (HTTP)
 
 Point your MCP client at `https://<your-host>/mcp`.
 

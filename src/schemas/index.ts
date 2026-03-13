@@ -31,8 +31,14 @@ export const GetProductDetailsInput = z.object({
   langCode: z.string().length(2).default("en"),
 });
 
+export const CheckMultiItemStockInput = z.object({
+  storeId: z.string().min(1),
+  itemNos: z.array(z.string().min(1)).min(1).max(20),
+});
+
 export type SearchProductsInputType = z.infer<typeof SearchProductsInput>;
 export type CheckStoreStockInputType = z.infer<typeof CheckStoreStockInput>;
 export type CompareStoreStockInputType = z.infer<typeof CompareStoreStockInput>;
 export type FindBestStoreInputType = z.infer<typeof FindBestStoreInput>;
 export type GetProductDetailsInputType = z.infer<typeof GetProductDetailsInput>;
+export type CheckMultiItemStockInputType = z.infer<typeof CheckMultiItemStockInput>;
