@@ -71,6 +71,27 @@ try {
   const inv = await fetch(`http://localhost:${PORT}/foo`);
   console.log("HTTP invalid path:", inv.status === 404 ? "404 OK" : "UNEXPECTED " + inv.status);
 
+  // API_KEY check — spawn a second server with API_KEY set, verify 401 without header
+  const authPort = PORT + 1;
+  const authServer = spawn("node", [join(__dirname, "dist/http.js")], {
+    env: { ...process.env, PORT: String(authPort), API_KEY: "test-secret" },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  await new Promise((resolve) => {
+    authServer.stderr.on("data", (d) => { if (d.toString().includes("listening")) resolve(); });
+    setTimeout(resolve, 3000);
+  });
+  const unauth = await fetch(`http://localhost:${authPort}/mcp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream" },
+    body: "{}",
+  });
+  const unauthBody = await unauth.json();
+  console.log("HTTP API_KEY unauth:", unauth.status === 401 && unauthBody.error === "unauthorized" ? "401 OK" : "UNEXPECTED " + unauth.status);
+  const authed = await fetch(`http://localhost:${authPort}/health`);
+  console.log("HTTP API_KEY /health open:", authed.status === 200 ? "200 OK" : "UNEXPECTED " + authed.status);
+  authServer.kill();
+
 } catch (e) {
   console.error("ERROR:", e.message);
 } finally {

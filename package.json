@@ -1,6 +1,6 @@
 {
   "name": "ikea-mcp",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Read-only MCP server for IKEA product search and in-store stock lookup. Supports stdio and Streamable HTTP transports.",
   "license": "MIT",
   "type": "module",

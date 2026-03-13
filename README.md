@@ -19,7 +19,7 @@ Read-only MCP server for IKEA product search and in-store stock lookup.
 - Uses unofficial public IKEA APIs — no SLA, may break without notice
 - ~65 confirmed US and Canada stores in catalog (`src/data/stores.ts`); some IDs remain unverified
 - Cash-and-carry availability only — click-and-collect and home delivery not exposed
-- HTTP transport has no auth — do not expose publicly without adding authentication
+- HTTP transport is open by default — set `API_KEY` env var to require `x-api-key` header on `/mcp`
 - Read-only — no cart, order, or account operations
 
 ## Tools
@@ -194,6 +194,50 @@ Returns `[]` if no store has the item in stock. "All known stores" means the ~65
 
 ---
 
+## Example workflows
+
+### 1. Search → inspect → check one store
+
+```
+1. search_products       { "query": "BILLY bookcase" }
+   → pick itemNo from results, e.g. "20522046"
+
+2. get_product_details   { "itemNo": "20522046" }
+   → confirms name, price, dimensions before checking stock
+
+3. check_store_stock     { "itemNo": "20522046", "storeId": "399" }
+   → { "availableForCashCarry": true, "quantity": 95, "messageType": "HIGH_IN_STOCK" }
+```
+
+### 2. Shopping list at one store
+
+Check whether several items are available in a single trip:
+
+```json
+{
+  "tool": "check_multi_item_stock",
+  "storeId": "399",
+  "itemNos": ["20522046", "40477340", "89268919"]
+}
+```
+
+Returns one entry per item in the same order — items not stocked appear with `availableForCashCarry: false` and a 404 error.
+
+### 3. Best store from a mixed US + Canada subset
+
+```json
+{
+  "tool": "find_best_store_for_item",
+  "itemNo": "20522046",
+  "storeIds": ["399", "039", "216", "149", "026"],
+  "maxResults": 3
+}
+```
+
+Returns the top 3 stores by in-stock quantity across the mixed US/Canada subset. Omit `storeIds` to search all ~65 known stores.
+
+---
+
 ## Build and test
 
 ```bash
@@ -244,7 +288,11 @@ Endpoints after deploy:
 - `POST /mcp` — MCP Streamable HTTP (requires `Accept: application/json, text/event-stream`)
 - `GET /health` — returns `{"status":"ok"}`
 
-> **Security note:** No auth is implemented in this MVP. Do not expose the `/mcp` endpoint publicly without adding authentication. The server is read-only — no cart, order, or account operations are possible.
+> **Security note:** Set `API_KEY` to protect the `/mcp` endpoint. Requests without a matching `x-api-key` header return 401. `/health` is always open. The server is read-only — no cart, order, or account operations are possible.
+>
+> ```bash
+> API_KEY=your-secret node dist/http.js
+> ```
 
 ## Connecting a local MCP client (stdio)
 

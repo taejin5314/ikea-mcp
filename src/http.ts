@@ -4,6 +4,7 @@ import { createServer } from "./server.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const BODY_LIMIT = 1024 * 1024; // 1 MB
+const API_KEY = process.env.API_KEY ?? "";
 
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -45,6 +46,11 @@ const httpServer = createHttpServer(async (req: IncomingMessage, res: ServerResp
       return;
     }
 
+    if (API_KEY && req.headers["x-api-key"] !== API_KEY) {
+      sendJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+
     if (method === "POST" && url === "/mcp") {
       const body = await readBody(req);
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -66,4 +72,5 @@ const httpServer = createHttpServer(async (req: IncomingMessage, res: ServerResp
 httpServer.listen(PORT, () => {
   console.error(`ikea-mcp HTTP listening on http://localhost:${PORT}/mcp`);
   console.error(`health: http://localhost:${PORT}/health`);
+  console.error(`auth: ${API_KEY ? "API_KEY required (x-api-key header)" : "open (set API_KEY to enable)"}`);
 });
