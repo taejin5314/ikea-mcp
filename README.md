@@ -17,7 +17,7 @@ Read-only MCP server for IKEA product search and in-store stock lookup.
 
 ## MVP limitations
 - Uses unofficial public IKEA APIs — no SLA, may break without notice
-- ~50 confirmed US stores in catalog (`src/data/stores.ts`); some IDs remain unverified
+- ~65 confirmed US and Canada stores in catalog (`src/data/stores.ts`); some IDs remain unverified
 - Cash-and-carry availability only — click-and-collect and home delivery not exposed
 - HTTP transport has no auth — do not expose publicly without adding authentication
 - Read-only — no cart, order, or account operations
@@ -190,7 +190,7 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 ]
 ```
 
-Returns `[]` if no store has the item in stock. "All known stores" means the ~50 entries in `src/data/stores.ts`.
+Returns `[]` if no store has the item in stock. "All known stores" means the ~65 US and Canada entries in `src/data/stores.ts`.
 
 ---
 
@@ -302,12 +302,12 @@ The `Accept: application/json, text/event-stream` header is required by the MCP 
 
 ## Store IDs
 
-Store metadata (ID → city label) lives in `src/data/stores.ts`. ~50 US stores are confirmed from `ikea.com/us/en/stores/<slug>/` pages.
+Store metadata (ID → city label) lives in `src/data/stores.ts`. ~50 US stores confirmed from `ikea.com/us/en/stores/` pages; 15 Canada stores confirmed from `ikea.com/ca/en/stores/` pages (all probed against the stock API).
 
 Confirmed compatible `storeId` formats:
-- Standard 3-digit: `"399"` (Burbank, CA)
-- Leading-zero 3-digit: `"026"` (Canton, MI), `"042"` (Tampa, FL)
-- 4-digit: `"921"` (Brooklyn, NY), `"1129"` (Syracuse, NY)
+- Standard 3-digit: `"399"` (Burbank, CA, US), `"216"` (Calgary, AB, CA)
+- Leading-zero 3-digit: `"026"` (Canton, MI, US), `"039"` (Montreal, QC, CA)
+- 4-digit: `"921"` (Brooklyn, NY, US), `"1129"` (Syracuse, NY, US)
 
 Some stores remain unconfirmed (no store page ID found or not yet probed). A few valid-looking IDs from the stock API have no known city mapping — see TODO comments in `stores.ts`.
 

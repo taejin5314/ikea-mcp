@@ -143,6 +143,27 @@ try {
     const allArrayErrors = d.every((r) => Array.isArray(r.errors));
     console.log(`check_multi_item_stock ${ordered && allArrayErrors ? "OK" : "MISMATCH"} — items: ${d.length}, qty[0]: ${d[0]?.quantity}, qty[1]: ${d[1]?.quantity}`);
   }
+  // check_store_stock — Canada store (149 North York, ON)
+  send({ jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "check_store_stock", arguments: { itemNo: "20522046", storeId: "149" } } });
+  const csCA = await readNext(10000);
+  if (csCA.error) {
+    console.log("check_store_stock[149/CA] FAIL:", JSON.stringify(csCA.error));
+  } else {
+    const d = JSON.parse(csCA.result.content[0].text);
+    const label = d.storeLabel ?? "none";
+    console.log(`check_store_stock[149/CA] ${label.includes("CA") ? "OK" : "LABEL_MISMATCH"} — label: ${label} qty: ${d.quantity} err: ${d.errors?.[0]?.code ?? "none"}`);
+  }
+
+  // find_best_store_for_item — mixed US + Canada subset
+  send({ jsonrpc: "2.0", id: 13, method: "tools/call", params: { name: "find_best_store_for_item", arguments: { itemNo: "20522046", storeIds: ["399", "039", "216", "149"], maxResults: 4 } } });
+  const bestCA = await readNext(15000);
+  if (bestCA.error) {
+    console.log("find_best_store_for_item[mixed] FAIL:", JSON.stringify(bestCA.error));
+  } else {
+    const d = JSON.parse(bestCA.result.content[0].text);
+    const hasCA = d.some((r) => r.storeLabel?.includes("CA"));
+    console.log(`find_best_store_for_item[mixed] ${hasCA ? "OK" : "NO_CA_RESULTS"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
+  }
 } catch (e) {
   console.error("ERROR:", e.message);
 } finally {

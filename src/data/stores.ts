@@ -1,10 +1,14 @@
 // US store labels confirmed from ikea.com/us/en/stores/<slug>/ pages (store_id= survey param).
+// CA store labels confirmed from ikea.com/ca/en/stores/<slug>/ pages (storeNo= embedded JSON).
 // IDs match the sto/{storeId} path used by the IKEA stock API.
 // 4-digit IDs (921, 1099, 1129) are newer-format stores — confirmed working with stock API.
 // 3136 (San Francisco) returns 405 from stock API — excluded.
-// TODO: huntsville, arcadia, mcallen-pharr, san-marcos — IDs not found on store pages.
-// TODO: 313, 372, 414, 448, 529, 559, 612, 634, 652, 661, 663, 692, 693 — valid API IDs, city unknown (possibly CA/other).
+// 698 (CA — unknown city) returns 422 from stock API — excluded.
+// 659 (Toronto Downtown) returns 200 but null quantity — included conservatively.
+// TODO: huntsville, arcadia, mcallen-pharr, san-marcos (US) — IDs not found on store pages.
+// TODO: 448, 612, 634, 652, 661, 663, 692, 693 — valid API IDs, city/country unknown.
 export const STORE_LABELS: Record<string, string> = {
+  // ── United States ────────────────────────────────────────────────────────────
   "026": "026 (Canton, MI)",
   "027": "027 (Round Rock, TX)",
   "028": "028 (Portland, OR)",
@@ -57,6 +61,24 @@ export const STORE_LABELS: Record<string, string> = {
   "921": "921 (Brooklyn, NY)",
   "1099": "1099 (University Park, TX)",
   "1129": "1129 (Syracuse, NY)",
+  // ── Canada ───────────────────────────────────────────────────────────────────
+  // Confirmed from ikea.com/ca/en/stores/<slug>/ pages (storeNo= embedded JSON).
+  // All probed against stock API with item 20522046 — all return 200.
+  "003": "003 (Richmond, BC, CA)",
+  "004": "004 (Ottawa, ON, CA)",
+  "039": "039 (Montreal, QC, CA)",
+  "040": "040 (Burlington, ON, CA)",
+  "149": "149 (North York, ON, CA)",
+  "216": "216 (Calgary, AB, CA)",
+  "249": "249 (Winnipeg, MB, CA)",
+  "256": "256 (Etobicoke, ON, CA)",
+  "313": "313 (Coquitlam, BC, CA)",
+  "349": "349 (Edmonton, AB, CA)",
+  "372": "372 (Vaughan, ON, CA)",
+  "414": "414 (Boucherville, QC, CA)",
+  "529": "529 (Halifax, NS, CA)",
+  "559": "559 (Quebec City, QC, CA)",
+  "659": "659 (Toronto Downtown, ON, CA)",
 };
 
 export function storeLabel(storeId: string): string | undefined {
