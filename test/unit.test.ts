@@ -358,7 +358,7 @@ test("projectMultiItemStock — invalid store (405) all items get store error", 
 
 // ── compareStoreStock input resolution ───────────────────────────────────────
 
-import { CompareStoreStockInput } from "../src/schemas/index.js";
+import { CompareStoreStockInput, CheckCartAvailabilityInput } from "../src/schemas/index.js";
 
 test("compareStoreStock — storeIds provided, no countryCode: uses storeIds", () => {
   const input = CompareStoreStockInput.parse({ itemNo: "20522046", storeIds: ["399", "026"] });
@@ -441,6 +441,73 @@ test("projectMultiItemStock — errors always array, never null", () => {
     ["20522046"]
   );
   assert.ok(Array.isArray(result[0].errors));
+});
+
+// ── CheckCartAvailabilityInput schema ────────────────────────────────────────
+
+test("checkCartAvailability schema — valid input parses and normalizes itemNo", () => {
+  const input = CheckCartAvailabilityInput.parse({
+    storeId: "399",
+    items: [{ itemNo: "005.221.32", quantity: 2 }],
+  });
+  assert.equal(input.storeId, "399");
+  assert.equal(input.items[0].itemNo, "00522132");
+  assert.equal(input.items[0].quantity, 2);
+});
+
+test("checkCartAvailability schema — quantity defaults to 1", () => {
+  const input = CheckCartAvailabilityInput.parse({
+    storeId: "399",
+    items: [{ itemNo: "20522046" }],
+  });
+  assert.equal(input.items[0].quantity, 1);
+});
+
+test("checkCartAvailability schema — rejects empty items array", () => {
+  assert.throws(() => CheckCartAvailabilityInput.parse({ storeId: "399", items: [] }));
+});
+
+// ── check_cart_availability projection logic ──────────────────────────────────
+
+function projectCart(
+  availabilities: NonNullable<Parameters<typeof projectMultiItemStock>[0]["availabilities"]>,
+  errors: { code: number; message: string; details?: { itemNo?: string } }[] | undefined,
+  items: { itemNo: string; quantity: number }[]
+) {
+  const byItemNo = new Map(availabilities.map((a) => [a.itemKey.itemNo, a]));
+  const storeError = (errors ?? []).find((e) => e.code === 405);
+  return items.map((item) => {
+    if (storeError) return { itemNo: item.itemNo, inStock: null, sufficient: false };
+    const a = byItemNo.get(item.itemNo);
+    if (a) {
+      const inStock = a.buyingOption.cashCarry.availability.quantity;
+      return { itemNo: item.itemNo, inStock, sufficient: inStock >= item.quantity };
+    }
+    return { itemNo: item.itemNo, inStock: null, sufficient: false };
+  });
+}
+
+test("checkCartAvailability — allSufficient true when all items have enough stock", () => {
+  const avail = [makeAvailability("20522046", 10), makeAvailability("40477340", 5)];
+  const rows = projectCart(avail, undefined, [
+    { itemNo: "20522046", quantity: 3 },
+    { itemNo: "40477340", quantity: 5 },
+  ]);
+  assert.ok(rows.every((r) => r.sufficient));
+});
+
+test("checkCartAvailability — allSufficient false when one item is short", () => {
+  const avail = [makeAvailability("20522046", 2)];
+  const rows = projectCart(avail, undefined, [{ itemNo: "20522046", quantity: 3 }]);
+  assert.equal(rows[0].sufficient, false);
+});
+
+test("checkCartAvailability — 405 store error marks all items insufficient", () => {
+  const rows = projectCart([], [{ code: 405, message: "Store not found" }], [
+    { itemNo: "20522046", quantity: 1 },
+    { itemNo: "40477340", quantity: 1 },
+  ]);
+  assert.ok(rows.every((r) => !r.sufficient && r.inStock === null));
 });
 
 // ── Canary — upstream IKEA stock API shape ────────────────────────────────────

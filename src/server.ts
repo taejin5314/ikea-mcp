@@ -11,8 +11,9 @@ import { findBestStoreForItemTool } from "./tools/find_best_store_for_item.js";
 import { getProductDetailsTool } from "./tools/get_product_details.js";
 import { checkMultiItemStockTool } from "./tools/check_multi_item_stock.js";
 import { listStoresTool } from "./tools/list_stores.js";
+import { checkCartAvailabilityTool } from "./tools/check_cart_availability.js";
 
-const tools = [listStoresTool, searchProductsTool, checkStoreStockTool, compareStoreStockTool, findBestStoreForItemTool, getProductDetailsTool, checkMultiItemStockTool];
+const tools = [listStoresTool, searchProductsTool, checkStoreStockTool, compareStoreStockTool, findBestStoreForItemTool, getProductDetailsTool, checkMultiItemStockTool, checkCartAvailabilityTool];
 
 export function createServer(): Server {
   const server = new Server(
