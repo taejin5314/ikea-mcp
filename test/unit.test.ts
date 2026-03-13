@@ -40,6 +40,7 @@ test("projectStock — stocked item returns correct shape", () => {
     availableForCashCarry: true,
     quantity: 42,
     messageType: "HIGH_IN_STOCK",
+    eligibleForStockNotification: false,
     errors: [],
   });
 });
@@ -49,6 +50,7 @@ test("projectStock — empty availabilities returns null fields", () => {
   assert.equal(result.availableForCashCarry, false);
   assert.equal(result.quantity, null);
   assert.equal(result.messageType, null);
+  assert.equal(result.eligibleForStockNotification, null);
   assert.deepEqual(result.errors, []);
 });
 
@@ -440,3 +442,27 @@ test("projectMultiItemStock — errors always array, never null", () => {
   );
   assert.ok(Array.isArray(result[0].errors));
 });
+
+// ── Canary — upstream IKEA stock API shape ────────────────────────────────────
+// Gate with CANARY=1 to avoid hitting the live API in normal test runs.
+
+if (process.env.CANARY) {
+  test("canary — upstream stock API shape is stable", async () => {
+    const res = await fetch(
+      "https://api.ingka.ikea.com/cia/availabilities/sto/399?itemNos=20522046&expand=StoresList,Restocks",
+      { headers: { "X-Client-Id": "b6c117e5-ae61-4ef5-b4cc-e0b1e37f0631", Accept: "application/json" } }
+    );
+    assert.ok(res.ok, `unexpected HTTP status: ${res.status}`);
+    const data = await res.json() as Record<string, unknown>;
+    assert.ok("timestamp" in data, "timestamp field missing");
+    assert.ok("availabilities" in data, "availabilities field missing");
+    if (Array.isArray(data.availabilities) && data.availabilities.length > 0) {
+      const a = data.availabilities[0] as Record<string, unknown>;
+      assert.ok("itemKey" in a, "itemKey missing");
+      assert.ok("availableForCashCarry" in a, "availableForCashCarry missing");
+      const cc = a.buyingOption as Record<string, unknown>;
+      const avail = (cc?.cashCarry as Record<string, unknown>)?.availability as Record<string, unknown>;
+      assert.equal(typeof avail?.quantity, "number", "quantity is not a number");
+    }
+  });
+}

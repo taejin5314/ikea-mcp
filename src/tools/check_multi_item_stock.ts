@@ -16,11 +16,10 @@ export const checkMultiItemStockTool = {
   async handler(rawInput: unknown) {
     const input = CheckMultiItemStockInput.parse(rawInput);
     const result = await getMultiItemStock(input.itemNos, input.storeId);
-    const label = storeLabel(input.storeId);
     const rows = projectMultiItemStock(result, input.itemNos).map((row) => ({
       itemNo: row.itemNo,
       storeId: input.storeId,
-      ...(label ? { storeLabel: label } : {}),
+      storeLabel: storeLabel(input.storeId) ?? input.storeId,
       availableForCashCarry: row.availableForCashCarry,
       quantity: row.quantity,
       messageType: row.messageType,

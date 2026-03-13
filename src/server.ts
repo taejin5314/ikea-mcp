@@ -10,8 +10,9 @@ import { compareStoreStockTool } from "./tools/compare_store_stock.js";
 import { findBestStoreForItemTool } from "./tools/find_best_store_for_item.js";
 import { getProductDetailsTool } from "./tools/get_product_details.js";
 import { checkMultiItemStockTool } from "./tools/check_multi_item_stock.js";
+import { listStoresTool } from "./tools/list_stores.js";
 
-const tools = [searchProductsTool, checkStoreStockTool, compareStoreStockTool, findBestStoreForItemTool, getProductDetailsTool, checkMultiItemStockTool];
+const tools = [listStoresTool, searchProductsTool, checkStoreStockTool, compareStoreStockTool, findBestStoreForItemTool, getProductDetailsTool, checkMultiItemStockTool];
 
 export function createServer(): Server {
   const server = new Server(

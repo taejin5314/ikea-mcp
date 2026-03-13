@@ -17,10 +17,9 @@ export const checkStoreStockTool = {
   async handler(rawInput: unknown) {
     const input = CheckStoreStockInput.parse(rawInput);
     const result = await getStoreStock(input.itemNo, input.storeId, input.countryCode);
-    const label = storeLabel(input.storeId);
     const output = {
       storeId: input.storeId,
-      ...(label ? { storeLabel: label } : {}),
+      storeLabel: storeLabel(input.storeId) ?? input.storeId,
       ...projectStock(result),
     };
     return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };

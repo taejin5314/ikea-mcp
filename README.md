@@ -8,6 +8,7 @@ Read-only MCP server for IKEA product search and in-store stock lookup.
 ## Capabilities
 | Tool | What it does |
 |---|---|
+| `list_stores` | List known store IDs and labels, optionally filtered by country |
 | `search_products` | Search IKEA products by keyword |
 | `get_product_details` | Get details for a single product by item number |
 | `check_store_stock` | Check cash-and-carry stock at one store |
@@ -32,7 +33,7 @@ Search IKEA products by keyword.
 | param | type | default | required |
 |---|---|---|---|
 | `query` | string | — | yes |
-| `countryCode` | string | `"us"` | no |
+| `countryCode` | string | `"US"` | no |
 | `langCode` | string | `"en"` | no |
 | `size` | number | `10` | no |
 
@@ -64,7 +65,7 @@ Get details for a single IKEA product by item number.
 | param | type | default | required |
 |---|---|---|---|
 | `itemNo` | string | — | yes |
-| `countryCode` | string | `"us"` | no |
+| `countryCode` | string | `"US"` | no |
 | `langCode` | string | `"en"` | no |
 
 **Output**
@@ -95,7 +96,7 @@ Check stock at a single IKEA store.
 |---|---|---|---|
 | `itemNo` | string | — | yes |
 | `storeId` | string | — | yes |
-| `countryCode` | string | `"us"` | no |
+| `countryCode` | string | `"US"` | no |
 
 **Output**
 ```json
@@ -131,8 +132,10 @@ Compare stock for one item across multiple stores. Provide explicit `storeIds`, 
 | `itemNo` | string | — | yes |
 | `storeIds` | string[] (min 2) | — | one of `storeIds`/`countryCode` |
 | `countryCode` | `"US"` \| `"CA"` | — | one of `storeIds`/`countryCode` |
+| `sortBy` | `"quantity"` \| `"storeId"` | — | no |
 
 `storeIds` takes precedence — if both are provided, `countryCode` only sets the IKEA API locale.
+`sortBy: "quantity"` sorts descending, null quantities last, `storeId` as tie-breaker. `sortBy: "storeId"` sorts ascending. Omitting `sortBy` preserves input order.
 
 **Examples**
 ```json
@@ -143,6 +146,8 @@ Compare stock for one item across multiple stores. Provide explicit `storeIds`, 
 ```
 
 **Output** — array of the same shape as `check_store_stock` (one entry per store).
+
+**Detecting partial failures:** rows with `errors` containing any code other than `404` indicate a store-level or API failure (e.g. `405` = invalid store ID). Rows with only `404` errors mean the item is simply not stocked at that store — this is expected, not a failure.
 
 ---
 
@@ -185,10 +190,11 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 |---|---|---|---|
 | `itemNo` | string | — | yes |
 | `storeIds` | string[] | all known stores | no |
-| `maxResults` | number | `3` (max 10) | no |
+| `maxResults` | number | `3` (max 50) | no |
 | `countryCode` | `"US"` \| `"CA"` | — | no |
+| `minQuantity` | number (int ≥ 1) | — | no |
 
-`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all ~65 known stores.
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all ~65 known stores. `minQuantity` excludes stores with quantity below the threshold.
 
 **Output** — array of matching stores, up to `maxResults`:
 ```json
@@ -204,6 +210,8 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 ```
 
 Returns `[]` if no store has the item in stock. "All known stores" means the ~65 US and Canada entries in `src/data/stores.ts`.
+
+**Note on failures:** stores that return a store-level error (405 invalid store ID) are silently excluded from results rather than appearing as rows. Use `compare_store_stock` with the same `storeIds` to inspect per-store `errors` directly.
 
 ---
 
@@ -378,6 +386,46 @@ An invalid or unsupported `storeId` returns a 405 error in the `errors` array.
 
 - Uses unofficial public IKEA APIs — no SLA, no auth required, may break without notice.
 - Read-only: no cart, no order, no account operations.
-- `compare_store_stock` fires all store requests in parallel — large `storeIds` arrays or a full `countryCode` expansion may hit rate limits.
+- Country-wide fan-out (`countryCode: "US"` ≈ 52 stores, `"CA"` ≈ 15) is capped at 10 concurrent requests and retries once on transient 5xx/network errors.
 - Click-and-collect and home-delivery availability are not exposed (cash-and-carry only).
 - `size` in `search_products` is capped by IKEA's API (observed max ~24 per page; `total` reflects the full catalogue count).
+- US and Canada only — no other countries supported.
+
+## Item numbers
+
+`itemNo` fields accept several formats — all are normalised to 8 digits internally:
+
+| Input | Normalised |
+|---|---|
+| `"20522046"` | `"20522046"` |
+| `"522132"` | `"00522132"` |
+| `"005.221.32"` | `"00522132"` |
+| `"5-221-32"` | `"00522132"` |
+
+6- and 7-digit inputs are left-padded to 8 digits. 8- and 9-digit inputs are kept as-is. Values outside 6–9 digits after stripping are rejected.
+
+## Supported countries
+
+| Country | Code | Store count |
+|---|---|---|
+| United States | `US` | ~52 |
+| Canada | `CA` | ~15 |
+
+Use `list_stores` to get the current catalog. Some store IDs in the catalog are unverified — they are listed but may return 405 from the stock API.
+
+## Rate limits & reliability
+
+- Fan-out requests (country-wide `compare_store_stock` / `find_best_store_for_item`) are capped at **10 concurrent** outbound requests.
+- `fetchJson` retries **once** after 500 ms on 5xx, 429, or network errors. 404 and 405 are not retried (they are semantic responses, not transient failures).
+- `Retry-After` header is respected for 429 responses.
+- Do not use in high-frequency loops — the upstream IKEA API has no published rate limit but will block repeated bursts.
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| `405` in `errors` | Invalid `storeId` — use `list_stores` to find valid IDs |
+| `404` in `errors` | Item not stocked at that store |
+| Empty `find_best_store_for_item` result | No store has the item in stock, or `minQuantity` is too high |
+| Slow `countryCode` query | Normal — fan-out to all country stores (capped at 10 concurrent) |
+| `itemNo` validation error | Input must resolve to 6–9 digits; see Item numbers above |

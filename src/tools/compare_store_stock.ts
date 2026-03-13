@@ -1,6 +1,7 @@
 import { CompareStoreStockInput } from "../schemas/index.js";
 import { getStoreStock, projectStock } from "../services/ikea.js";
 import { storeLabel, storeIdsByCountry } from "../data/stores.js";
+import { pMap } from "../utils/http.js";
 
 export const compareStoreStockTool = {
   name: "compare_store_stock",
@@ -12,6 +13,7 @@ export const compareStoreStockTool = {
       itemNo: { type: "string" },
       storeIds: { type: "array", items: { type: "string" }, minItems: 2 },
       countryCode: { type: "string", enum: ["US", "CA"] },
+      sortBy: { type: "string", enum: ["quantity", "storeId"] },
     },
     required: ["itemNo"],
   },
@@ -20,18 +22,24 @@ export const compareStoreStockTool = {
     const targetIds = input.storeIds
       ?? storeIdsByCountry(input.countryCode as "US" | "CA");
     const apiCountry = input.countryCode?.toLowerCase() ?? "us";
-    const results = await Promise.all(
-      targetIds.map((storeId) =>
-        getStoreStock(input.itemNo, storeId, apiCountry).then((data) => {
-          const label = storeLabel(storeId);
-          return {
-            storeId,
-            ...(label ? { storeLabel: label } : {}),
-            ...projectStock(data),
-          };
-        })
-      )
+    const results = await pMap(
+      targetIds,
+      (storeId) =>
+        getStoreStock(input.itemNo, storeId, apiCountry).then((data) => ({
+          storeId,
+          storeLabel: storeLabel(storeId) ?? storeId,
+          ...projectStock(data),
+        })),
+      10
     );
+    if (input.sortBy === "quantity") {
+      results.sort((a, b) => {
+        const diff = (b.quantity ?? -Infinity) - (a.quantity ?? -Infinity);
+        return diff !== 0 ? diff : a.storeId.localeCompare(b.storeId);
+      });
+    } else if (input.sortBy === "storeId") {
+      results.sort((a, b) => a.storeId.localeCompare(b.storeId));
+    }
     return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
   },
 };

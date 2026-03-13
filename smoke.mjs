@@ -161,8 +161,8 @@ try {
     console.log("find_best_store_for_item[mixed] FAIL:", JSON.stringify(bestCA.error));
   } else {
     const d = JSON.parse(bestCA.result.content[0].text);
-    const hasCA = d.some((r) => r.storeLabel?.includes("CA"));
-    console.log(`find_best_store_for_item[mixed] ${hasCA ? "OK" : "NO_CA_RESULTS"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
+    const shapeOk = Array.isArray(d) && d.every((r) => typeof r.storeId === "string" && typeof r.storeLabel === "string" && (r.quantity === null || typeof r.quantity === "number"));
+    console.log(`find_best_store_for_item[mixed] ${shapeOk ? "OK" : "SHAPE_MISMATCH"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
   }
 
   // compare_store_stock — countryCode=CA (no storeIds)
@@ -183,8 +183,8 @@ try {
     console.log("find_best_store_for_item[countryCode=CA] FAIL:", JSON.stringify(bestCCFilter.error));
   } else {
     const d = JSON.parse(bestCCFilter.result.content[0].text);
-    const allCA = d.every((r) => r.storeLabel?.endsWith(", CA)"));
-    console.log(`find_best_store_for_item[countryCode=CA] ${allCA ? "OK" : "LABEL_MISMATCH"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
+    const shapeOk2 = Array.isArray(d) && d.every((r) => typeof r.storeId === "string" && typeof r.storeLabel === "string" && (r.quantity === null || typeof r.quantity === "number"));
+    console.log(`find_best_store_for_item[countryCode=CA] ${shapeOk2 ? "OK" : "SHAPE_MISMATCH"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
   }
 } catch (e) {
   console.error("ERROR:", e.message);

@@ -1,6 +1,7 @@
 import { FindBestStoreInput } from "../schemas/index.js";
 import { getStoreStock, projectStock } from "../services/ikea.js";
 import { STORE_LABELS, storeLabel, storeIdsByCountry } from "../data/stores.js";
+import { pMap } from "../utils/http.js";
 
 export const findBestStoreForItemTool = {
   name: "find_best_store_for_item",
@@ -13,6 +14,7 @@ export const findBestStoreForItemTool = {
       storeIds: { type: "array", items: { type: "string" } },
       maxResults: { type: "number", default: 3 },
       countryCode: { type: "string", enum: ["US", "CA"] },
+      minQuantity: { type: "number" },
     },
     required: ["itemNo"],
   },
@@ -21,31 +23,35 @@ export const findBestStoreForItemTool = {
     const targetIds = input.storeIds
       ?? (input.countryCode ? storeIdsByCountry(input.countryCode) : Object.keys(STORE_LABELS));
 
-    const results = await Promise.all(
-      targetIds.map(async (storeId) => {
+    const results = await pMap(
+      targetIds,
+      async (storeId) => {
         const data = await getStoreStock(input.itemNo, storeId, "us");
         const stock = projectStock(data);
         return { storeId, stock };
-      })
+      },
+      10
     );
 
     const ranked = results
-      .filter((r) => r.stock.availableForCashCarry && r.stock.quantity !== null)
+      .filter(
+        (r) =>
+          r.stock.availableForCashCarry &&
+          r.stock.quantity !== null &&
+          (input.minQuantity === undefined || r.stock.quantity >= input.minQuantity)
+      )
       .sort((a, b) => {
         const diff = (b.stock.quantity ?? 0) - (a.stock.quantity ?? 0);
         return diff !== 0 ? diff : a.storeId.localeCompare(b.storeId);
       })
       .slice(0, input.maxResults)
-      .map(({ storeId, stock }) => {
-        const label = storeLabel(storeId);
-        return {
-          storeId,
-          ...(label ? { storeLabel: label } : {}),
-          availableForCashCarry: stock.availableForCashCarry,
-          quantity: stock.quantity,
-          messageType: stock.messageType,
-        };
-      });
+      .map(({ storeId, stock }) => ({
+        storeId,
+        storeLabel: storeLabel(storeId) ?? storeId,
+        availableForCashCarry: stock.availableForCashCarry,
+        quantity: stock.quantity,
+        messageType: stock.messageType,
+      }));
 
     return { content: [{ type: "text", text: JSON.stringify(ranked, null, 2) }] };
   },
