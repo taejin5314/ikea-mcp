@@ -2,7 +2,7 @@
 
 Read-only MCP server for IKEA product search and in-store stock lookup.
 
-**Transports:** stdio (Claude Desktop / MCP CLI) · Streamable HTTP (remote clients)  
+**Transports:** stdio (Claude Desktop / MCP CLI) · Streamable HTTP (remote clients)
 **License:** MIT · **No auth required to run locally**
 
 ## Capabilities
@@ -15,10 +15,15 @@ Read-only MCP server for IKEA product search and in-store stock lookup.
 | `check_multi_item_stock` | Check stock for multiple items at one store |
 | `compare_store_stock` | Compare stock across explicit stores or a country catalog |
 | `find_best_store_for_item` | Rank stores by in-stock quantity (optionally filter by country) |
+| `check_cart_availability` | Check whether all items in a shopping list are available at one store |
+| `find_best_store_for_cart` | Rank stores by cart fulfillment across multiple items |
 
 ## MVP limitations
 - Uses unofficial public IKEA APIs — no SLA, may break without notice
-- ~65 confirmed US and Canada stores in catalog (`src/data/stores.ts`); some IDs remain unverified
+- Canada store coverage is complete (15 stores)
+- US coverage is incomplete — 4 small-format stores have unknown API IDs (Queens, Alpharetta, Indianapolis, Arlington)
+- San Francisco small-format store is intentionally excluded (known ID 3136 returns 405)
+- No extra stores are included
 - Cash-and-carry availability only — click-and-collect and home delivery not exposed
 - HTTP transport is open by default — set `API_KEY` env var to require `x-api-key` header on `/mcp`
 - Read-only — no cart, order, or account operations
@@ -215,6 +220,79 @@ Returns `[]` if no store has the item in stock. "All known stores" means the ~65
 
 ---
 
+### `check_cart_availability`
+
+Check whether all items in a shopping list are available in sufficient quantity at a single IKEA store.
+
+**Input**
+| param | type | default | required |
+|---|---|---|---|
+| `storeId` | string | — | yes |
+| `items` | array of `{ itemNo, quantity }` | — | yes |
+| `items[].itemNo` | string | — | yes |
+| `items[].quantity` | number | `1` | no |
+
+**Output**
+```json
+{
+  "storeId": "399",
+  "storeLabel": "399 (Burbank, CA)",
+  "allSufficient": true,
+  "items": [
+    {
+      "itemNo": "20522046",
+      "quantity": 2,
+      "inStock": 42,
+      "sufficient": true,
+      "eligibleForStockNotification": false,
+      "errors": []
+    }
+  ]
+}
+```
+
+`allSufficient` is `true` only when every item has `sufficient: true`. Items not stocked appear with `inStock: null` and a 404 error. An invalid `storeId` (405) propagates to all items.
+
+---
+
+### `find_best_store_for_cart`
+
+Find the best store to buy multiple items in one trip. Ranks stores by how many cart items are available in sufficient quantity, then by total in-stock sum. Optionally filter by `countryCode` or provide explicit `storeIds`.
+
+**Input**
+| param | type | default | required |
+|---|---|---|---|
+| `items` | array of `{ itemNo, quantity }` | — | yes |
+| `items[].itemNo` | string | — | yes |
+| `items[].quantity` | number | `1` | no |
+| `storeIds` | string[] | — | no |
+| `countryCode` | `"US"` \| `"CA"` | — | no |
+| `maxResults` | number | `3` (max 50) | no |
+
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all ~65 known stores.
+
+**Output** — array of stores ranked by cart fulfillment, up to `maxResults`:
+```json
+[
+  {
+    "storeId": "399",
+    "storeLabel": "399 (Burbank, CA)",
+    "allSufficient": true,
+    "fulfilledCount": 3,
+    "totalCount": 3,
+    "items": [
+      { "itemNo": "20522046", "quantity": 2, "inStock": 42, "sufficient": true },
+      { "itemNo": "40477340", "quantity": 1, "inStock": 5, "sufficient": true },
+      { "itemNo": "89268919", "quantity": 1, "inStock": 12, "sufficient": true }
+    ]
+  }
+]
+```
+
+`fulfilledCount` = number of items with `sufficient: true`. Sorting: `fulfilledCount` desc → total stock desc → `storeId` asc. Stores with invalid IDs (405) are excluded.
+
+---
+
 ## Example workflows
 
 ### 1. Search → inspect → check one store
@@ -256,6 +334,25 @@ Returns one entry per item in the same order — items not stocked appear with `
 ```
 
 Returns the top 3 stores by in-stock quantity across the mixed US/Canada subset. Omit `storeIds` to search all ~65 known stores.
+
+### 4. Best store for a shopping list
+
+Find which store can fulfill the most items from a multi-item cart:
+
+```json
+{
+  "tool": "find_best_store_for_cart",
+  "items": [
+    { "itemNo": "20522046", "quantity": 2 },
+    { "itemNo": "40477340", "quantity": 1 },
+    { "itemNo": "89268919", "quantity": 1 }
+  ],
+  "countryCode": "CA",
+  "maxResults": 3
+}
+```
+
+Returns the top 3 Canada stores ranked by how many items they can fully supply. Use `check_cart_availability` to then verify exact quantities at the chosen store.
 
 ---
 
@@ -377,8 +474,6 @@ Confirmed compatible `storeId` formats:
 - Standard 3-digit: `"399"` (Burbank, CA, US), `"216"` (Calgary, AB, CA)
 - Leading-zero 3-digit: `"026"` (Canton, MI, US), `"039"` (Montreal, QC, CA)
 - 4-digit: `"921"` (Brooklyn, NY, US), `"1129"` (Syracuse, NY, US)
-
-Some stores remain unconfirmed (no store page ID found or not yet probed). A few valid-looking IDs from the stock API have no known city mapping — see TODO comments in `stores.ts`.
 
 An invalid or unsupported `storeId` returns a 405 error in the `errors` array.
 

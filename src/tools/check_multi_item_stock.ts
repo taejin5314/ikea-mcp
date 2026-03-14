@@ -23,6 +23,7 @@ export const checkMultiItemStockTool = {
       availableForCashCarry: row.availableForCashCarry,
       quantity: row.quantity,
       messageType: row.messageType,
+      eligibleForStockNotification: row.eligibleForStockNotification,
       errors: row.errors,
     }));
     return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };

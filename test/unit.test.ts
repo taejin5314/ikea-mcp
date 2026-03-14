@@ -358,7 +358,7 @@ test("projectMultiItemStock — invalid store (405) all items get store error", 
 
 // ── compareStoreStock input resolution ───────────────────────────────────────
 
-import { CompareStoreStockInput, CheckCartAvailabilityInput } from "../src/schemas/index.js";
+import { CompareStoreStockInput, CheckCartAvailabilityInput, FindBestStoreForCartInput, ListStoresInput, CheckMultiItemStockInput, FindBestStoreInput } from "../src/schemas/index.js";
 
 test("compareStoreStock — storeIds provided, no countryCode: uses storeIds", () => {
   const input = CompareStoreStockInput.parse({ itemNo: "20522046", storeIds: ["399", "026"] });
@@ -508,6 +508,163 @@ test("checkCartAvailability — 405 store error marks all items insufficient", (
     { itemNo: "40477340", quantity: 1 },
   ]);
   assert.ok(rows.every((r) => !r.sufficient && r.inStock === null));
+});
+
+// ── find_best_store_for_cart scoring logic ────────────────────────────────────
+
+interface CartStoreEntry {
+  storeId: string;
+  items: { itemNo: string; quantity: number; inStock: number | null; sufficient: boolean }[];
+}
+
+function scoreCartStores(entries: CartStoreEntry[], maxResults: number) {
+  return entries
+    .map((e) => {
+      const fulfilledCount = e.items.filter((i) => i.sufficient).length;
+      const totalStock = e.items.reduce((sum, i) => sum + (i.inStock ?? 0), 0);
+      return { ...e, fulfilledCount, totalStock, totalCount: e.items.length, allSufficient: fulfilledCount === e.items.length };
+    })
+    .sort((a, b) => {
+      const fc = b.fulfilledCount - a.fulfilledCount;
+      if (fc !== 0) return fc;
+      const ts = b.totalStock - a.totalStock;
+      if (ts !== 0) return ts;
+      return a.storeId.localeCompare(b.storeId);
+    })
+    .slice(0, maxResults);
+}
+
+test("findBestStoreForCart — ranks by fulfilledCount first", () => {
+  const entries: CartStoreEntry[] = [
+    { storeId: "399", items: [{ itemNo: "A", quantity: 1, inStock: 50, sufficient: true }, { itemNo: "B", quantity: 1, inStock: null, sufficient: false }] },
+    { storeId: "026", items: [{ itemNo: "A", quantity: 1, inStock: 10, sufficient: true }, { itemNo: "B", quantity: 1, inStock: 5, sufficient: true }] },
+  ];
+  const result = scoreCartStores(entries, 3);
+  assert.equal(result[0].storeId, "026"); // 2/2 fulfilled
+  assert.equal(result[1].storeId, "399"); // 1/2 fulfilled
+});
+
+test("findBestStoreForCart — tie-breaks by totalStock", () => {
+  const entries: CartStoreEntry[] = [
+    { storeId: "399", items: [{ itemNo: "A", quantity: 1, inStock: 10, sufficient: true }] },
+    { storeId: "026", items: [{ itemNo: "A", quantity: 1, inStock: 50, sufficient: true }] },
+  ];
+  const result = scoreCartStores(entries, 3);
+  assert.equal(result[0].storeId, "026"); // higher total stock
+});
+
+test("findBestStoreForCart — tie-breaks by storeId when fulfilledCount and totalStock equal", () => {
+  const entries: CartStoreEntry[] = [
+    { storeId: "399", items: [{ itemNo: "A", quantity: 1, inStock: 10, sufficient: true }] },
+    { storeId: "026", items: [{ itemNo: "A", quantity: 1, inStock: 10, sufficient: true }] },
+  ];
+  const result = scoreCartStores(entries, 3);
+  assert.equal(result[0].storeId, "026");
+  assert.equal(result[1].storeId, "399");
+});
+
+test("findBestStoreForCart — respects maxResults", () => {
+  const entries: CartStoreEntry[] = [
+    { storeId: "399", items: [{ itemNo: "A", quantity: 1, inStock: 30, sufficient: true }] },
+    { storeId: "026", items: [{ itemNo: "A", quantity: 1, inStock: 20, sufficient: true }] },
+    { storeId: "921", items: [{ itemNo: "A", quantity: 1, inStock: 10, sufficient: true }] },
+  ];
+  const result = scoreCartStores(entries, 2);
+  assert.equal(result.length, 2);
+});
+
+test("findBestStoreForCart — allSufficient flag correct", () => {
+  const entries: CartStoreEntry[] = [
+    { storeId: "399", items: [{ itemNo: "A", quantity: 2, inStock: 10, sufficient: true }, { itemNo: "B", quantity: 3, inStock: 5, sufficient: true }] },
+    { storeId: "026", items: [{ itemNo: "A", quantity: 2, inStock: 10, sufficient: true }, { itemNo: "B", quantity: 3, inStock: 1, sufficient: false }] },
+  ];
+  const result = scoreCartStores(entries, 3);
+  assert.equal(result[0].allSufficient, true);  // 399: 2/2
+  assert.equal(result[1].allSufficient, false); // 026: 1/2
+});
+
+// ── FindBestStoreForCartInput schema ──────────────────────────────────────────
+
+test("findBestStoreForCart schema — valid input parses and normalizes itemNo", () => {
+  const input = FindBestStoreForCartInput.parse({
+    items: [{ itemNo: "005.221.32", quantity: 2 }],
+    countryCode: "ca",
+  });
+  assert.equal(input.items[0].itemNo, "00522132");
+  assert.equal(input.items[0].quantity, 2);
+  assert.equal(input.countryCode, "CA");
+  assert.equal(input.maxResults, 3);
+});
+
+test("findBestStoreForCart schema — quantity defaults to 1", () => {
+  const input = FindBestStoreForCartInput.parse({ items: [{ itemNo: "20522046" }] });
+  assert.equal(input.items[0].quantity, 1);
+});
+
+test("findBestStoreForCart schema — rejects empty items array", () => {
+  assert.throws(() => FindBestStoreForCartInput.parse({ items: [] }));
+});
+
+// ── ListStoresInput schema ────────────────────────────────────────────────────
+
+test("listStores schema — parses without countryCode", () => {
+  const input = ListStoresInput.parse({});
+  assert.equal(input.countryCode, undefined);
+});
+
+test("listStores schema — parses with countryCode and normalizes", () => {
+  const input = ListStoresInput.parse({ countryCode: "ca" });
+  assert.equal(input.countryCode, "CA");
+});
+
+// ── CheckMultiItemStockInput schema ──────────────────────────────────────────
+
+test("checkMultiItemStock schema — normalizes itemNos", () => {
+  const input = CheckMultiItemStockInput.parse({ storeId: "399", itemNos: ["005.221.32", "20522046"] });
+  assert.equal(input.itemNos[0], "00522132");
+  assert.equal(input.itemNos[1], "20522046");
+});
+
+test("checkMultiItemStock schema — rejects empty itemNos array", () => {
+  assert.throws(() => CheckMultiItemStockInput.parse({ storeId: "399", itemNos: [] }));
+});
+
+// ── FindBestStoreInput schema ────────────────────────────────────────────────
+
+test("findBestStore schema — defaults maxResults to 3", () => {
+  const input = FindBestStoreInput.parse({ itemNo: "20522046" });
+  assert.equal(input.maxResults, 3);
+});
+
+test("findBestStore schema — normalizes itemNo", () => {
+  const input = FindBestStoreInput.parse({ itemNo: "005.221.32" });
+  assert.equal(input.itemNo, "00522132");
+});
+
+// ── projectMultiItemStock includes eligibleForStockNotification ──────────────
+
+test("projectMultiItemStock — stocked item includes eligibleForStockNotification", () => {
+  const result = projectMultiItemStock(
+    { availabilities: [makeAvailability("20522046", 10)], timestamp: "t" },
+    ["20522046"]
+  );
+  assert.equal(result[0].eligibleForStockNotification, false);
+});
+
+test("projectMultiItemStock — not-stocked item has eligibleForStockNotification null", () => {
+  const result = projectMultiItemStock(
+    { availabilities: [], errors: [{ code: 404, message: "Not found", details: { itemNo: "99999999" } }], timestamp: "t" },
+    ["99999999"]
+  );
+  assert.equal(result[0].eligibleForStockNotification, null);
+});
+
+test("projectMultiItemStock — 405 store error has eligibleForStockNotification null", () => {
+  const result = projectMultiItemStock(
+    { availabilities: null, errors: [{ code: 405, message: "Store not found" }], timestamp: "t" },
+    ["20522046"]
+  );
+  assert.equal(result[0].eligibleForStockNotification, null);
 });
 
 // ── Canary — upstream IKEA stock API shape ────────────────────────────────────

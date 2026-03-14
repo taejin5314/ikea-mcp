@@ -104,6 +104,18 @@ export const CheckCartAvailabilityInput = z.object({
   ).min(1).max(20),
 });
 
+export const FindBestStoreForCartInput = z.object({
+  items: z.array(
+    z.object({
+      itemNo: ItemNo,
+      quantity: z.number().int().min(1).max(99).default(1),
+    })
+  ).min(1).max(20),
+  storeIds: z.array(z.string().min(1)).optional(),
+  countryCode: CountryCodeEnum.optional(),
+  maxResults: z.number().int().min(1).max(50).default(3),
+});
+
 export type ListStoresInputType = z.infer<typeof ListStoresInput>;
 export type SearchProductsInputType = z.infer<typeof SearchProductsInput>;
 export type CheckStoreStockInputType = z.infer<typeof CheckStoreStockInput>;
@@ -112,3 +124,4 @@ export type FindBestStoreInputType = z.infer<typeof FindBestStoreInput>;
 export type GetProductDetailsInputType = z.infer<typeof GetProductDetailsInput>;
 export type CheckMultiItemStockInputType = z.infer<typeof CheckMultiItemStockInput>;
 export type CheckCartAvailabilityInputType = z.infer<typeof CheckCartAvailabilityInput>;
+export type FindBestStoreForCartInputType = z.infer<typeof FindBestStoreForCartInput>;

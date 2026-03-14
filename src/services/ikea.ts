@@ -156,6 +156,7 @@ export function projectMultiItemStock(result: StockResponse, itemNos: string[]) 
         availableForCashCarry: false,
         quantity: null as number | null,
         messageType: null as string | null,
+        eligibleForStockNotification: null as boolean | null,
         errors: [{ ...storeError, meaning: "store ID does not exist" }],
       };
     }
@@ -166,6 +167,7 @@ export function projectMultiItemStock(result: StockResponse, itemNos: string[]) 
         availableForCashCarry: a.availableForCashCarry,
         quantity: a.buyingOption.cashCarry.availability.quantity,
         messageType: a.buyingOption.cashCarry.availability.probability.thisDay.messageType,
+        eligibleForStockNotification: a.buyingOption.cashCarry.eligibleForStockNotification ?? null,
         errors: [] as typeof annotatedNotStocked,
       };
     }
@@ -180,6 +182,7 @@ export function projectMultiItemStock(result: StockResponse, itemNos: string[]) 
       availableForCashCarry: false,
       quantity: null as number | null,
       messageType: null as string | null,
+      eligibleForStockNotification: null as boolean | null,
       errors: annotatedNotStocked,
     };
   });
