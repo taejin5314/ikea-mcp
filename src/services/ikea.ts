@@ -129,9 +129,9 @@ export function projectStock(result: StockResponse) {
   const a = result.availabilities?.[0];
   return {
     availableForCashCarry: a?.availableForCashCarry ?? false,
-    quantity: a?.buyingOption.cashCarry.availability.quantity ?? null,
-    messageType: a?.buyingOption.cashCarry.availability.probability.thisDay.messageType ?? null,
-    eligibleForStockNotification: a?.buyingOption.cashCarry.eligibleForStockNotification ?? null,
+    quantity: a?.buyingOption?.cashCarry?.availability?.quantity ?? null,
+    messageType: a?.buyingOption?.cashCarry?.availability?.probability?.thisDay?.messageType ?? null,
+    eligibleForStockNotification: a?.buyingOption?.cashCarry?.eligibleForStockNotification ?? null,
     errors: annotateStockErrors(result.errors) ?? [],
   };
 }
@@ -165,9 +165,9 @@ export function projectMultiItemStock(result: StockResponse, itemNos: string[]) 
       return {
         itemNo,
         availableForCashCarry: a.availableForCashCarry,
-        quantity: a.buyingOption.cashCarry.availability.quantity,
-        messageType: a.buyingOption.cashCarry.availability.probability.thisDay.messageType,
-        eligibleForStockNotification: a.buyingOption.cashCarry.eligibleForStockNotification ?? null,
+        quantity: a.buyingOption?.cashCarry?.availability?.quantity ?? null,
+        messageType: a.buyingOption?.cashCarry?.availability?.probability?.thisDay?.messageType ?? null,
+        eligibleForStockNotification: a.buyingOption?.cashCarry?.eligibleForStockNotification ?? null,
         errors: [] as typeof annotatedNotStocked,
       };
     }
