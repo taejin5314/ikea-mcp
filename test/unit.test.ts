@@ -198,10 +198,11 @@ test("projectProduct — projects expected fields and excludes raw fields", () =
     measureText: '31 1/2x11x79 1/2"',
     ratingValue: 4.6,
     ratingCount: 2620,
+    imageUrl: "https://example.com/img.jpg",
   });
 
   assert.equal("id" in out, false);
-  assert.equal("mainImageUrl" in out, false);
+  assert.equal("imageUrl" in out, true);
   assert.equal("onlineSellable" in out, false);
 });
 
@@ -255,6 +256,7 @@ test("search_products projection — selects expected fields only", () => {
       typeName: p.typeName,
       salesPrice: { amount: p.salesPrice.numeral, currencyCode: p.salesPrice.currencyCode },
       pipUrl: p.pipUrl,
+      imageUrl: p.mainImageUrl,
       ratingValue: p.ratingValue,
       ratingCount: p.ratingCount,
     })),
@@ -265,11 +267,12 @@ test("search_products projection — selects expected fields only", () => {
 
   const item = output.items[0];
   assert.deepEqual(Object.keys(item).sort(), [
-    "itemNo", "name", "pipUrl", "ratingCount", "ratingValue", "salesPrice", "typeName",
+    "imageUrl", "itemNo", "name", "pipUrl", "ratingCount", "ratingValue", "salesPrice", "typeName",
   ].sort());
   assert.equal(item.itemNo, "20522046");
   assert.equal(item.name, "BILLY");
   assert.deepEqual(item.salesPrice, { amount: 69.99, currencyCode: "USD" });
+  assert.equal(item.imageUrl, "https://example.com/img.jpg");
 
   // Fields that must NOT be present
   assert.equal("id" in item, false);

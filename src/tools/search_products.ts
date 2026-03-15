@@ -31,6 +31,7 @@ export const searchProductsTool = {
         typeName: p.typeName,
         salesPrice: { amount: p.salesPrice.numeral, currencyCode: p.salesPrice.currencyCode },
         pipUrl: p.pipUrl,
+        imageUrl: p.mainImageUrl,
         ratingValue: p.ratingValue,
         ratingCount: p.ratingCount,
       })),

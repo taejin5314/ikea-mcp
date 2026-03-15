@@ -201,6 +201,7 @@ export function projectProduct(p: SearchProduct) {
     measureText: p.itemMeasureReferenceText ?? null,
     ratingValue: p.ratingValue,
     ratingCount: p.ratingCount,
+    imageUrl: p.mainImageUrl,
   };
 }
 
