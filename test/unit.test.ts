@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
-import { storeIdsByCountry, STORE_LABELS } from "../src/data/stores.js";
+import { storeIdsByCountry, STORE_LABELS, STORES, storeLabel, storeLabelFor, storeCountry, allStoreIds } from "../src/data/stores.js";
+import { readFileSync } from "node:fs";
 import { COUNTRY_CODES, DEFAULT_LANG_CODE, defaultLangCode, isCountryCode } from "../src/data/countries.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -406,27 +407,29 @@ test("compareStoreStock — storeIds takes precedence over countryCode", () => {
 
 test("storeIdsByCountry — CA returns only CA stores", () => {
   const ids = storeIdsByCountry("CA");
-  assert.ok(ids.length > 0);
-  ids.forEach((id) => {
-    assert.match(STORE_LABELS[id], /,\s+[A-Z]{2},\s+CA\)$/, `expected CA label for ${id}: ${STORE_LABELS[id]}`);
-  });
+  assert.equal(ids.length, 15);
+  ids.forEach((id) => assert.equal(storeCountry(id), "CA"));
 });
 
-test("storeIdsByCountry — US returns only non-CA stores", () => {
+test("storeIdsByCountry — US returns only US stores", () => {
   const ids = storeIdsByCountry("US");
-  assert.ok(ids.length > 0);
-  ids.forEach((id) => {
-    assert.doesNotMatch(STORE_LABELS[id], /,\s+[A-Z]{2},\s+CA\)$/, `unexpected CA label for ${id}: ${STORE_LABELS[id]}`);
-  });
+  assert.equal(ids.length, 52);
+  ids.forEach((id) => assert.equal(storeCountry(id), "US"));
 });
 
-test("storeIdsByCountry — US and CA partition all stores exactly", () => {
+test("storeIdsByCountry — NO returns exactly the seven Norwegian stores", () => {
+  assert.deepEqual(storeIdsByCountry("NO"), ["007", "091", "095", "126", "371", "390", "441"]);
+});
+
+test("storeIdsByCountry — US, CA and NO partition all stores exactly", () => {
   const us = storeIdsByCountry("US");
   const ca = storeIdsByCountry("CA");
-  const all = Object.keys(STORE_LABELS);
-  assert.equal(us.length + ca.length, all.length);
-  const combined = new Set([...us, ...ca]);
-  assert.equal(combined.size, all.length);
+  const no = storeIdsByCountry("NO");
+  const all = allStoreIds();
+  assert.equal(us.length + ca.length + no.length, all.length);
+  assert.equal(new Set([...us, ...ca, ...no]).size, all.length);
+  assert.equal(all.length, 74);
+  assert.equal(Object.keys(STORE_LABELS).length, 74);
 });
 
 test("storeIdsByCountry — known CA store 149 is in CA set", () => {
@@ -721,4 +724,38 @@ test("countries — isCountryCode is a type guard over COUNTRY_CODES", () => {
   assert.equal(isCountryCode("NO"), true);
   assert.equal(isCountryCode("no"), false);
   assert.equal(isCountryCode("SE"), false);
+});
+
+// ── store catalog labels ──────────────────────────────────────────────────────
+
+test("stores — US and CA labels are byte-identical to the v1.6.2 catalog", () => {
+  const expected = JSON.parse(
+    readFileSync(new URL("./fixtures/store-labels-v1.6.2.json", import.meta.url), "utf8")
+  ) as Record<string, string>;
+  const actual: Record<string, string> = {};
+  for (const s of STORES) {
+    if (s.countryCode !== "NO") actual[s.storeId] = storeLabelFor(s);
+  }
+  assert.deepEqual(actual, expected);
+  assert.equal(Object.keys(expected).length, 67);
+});
+
+test("stores — Norwegian labels use name, city and NO", () => {
+  assert.equal(storeLabel("095"), "095 (Furuset, Oslo, NO)");
+  assert.equal(storeLabel("007"), "007 (Sørlandet, Kristiansand, NO)");
+  assert.equal(storeLabel("441"), "441 (Åsane, Bergen, NO)");
+  assert.equal(STORE_LABELS["390"], "390 (Ringsaker, Hamar, NO)");
+});
+
+test("stores — storeLabel and storeCountry are undefined for unknown IDs", () => {
+  assert.equal(storeLabel("999"), undefined);
+  assert.equal(storeCountry("999"), undefined);
+  assert.equal(storeCountry("095"), "NO");
+  assert.equal(storeCountry("399"), "US");
+  assert.equal(storeCountry("149"), "CA");
+});
+
+test("stores — no duplicate store IDs", () => {
+  const ids = allStoreIds();
+  assert.equal(new Set(ids).size, ids.length);
 });
