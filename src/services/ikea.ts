@@ -82,7 +82,9 @@ interface StockCashCarry {
   eligibleForStockNotification: boolean;
   unitOfMeasure: string;
   updateDateTime: string;
-  // TODO: range, tags not typed
+  /** inRange false = item not sold at this store / in this market; availability is then omitted. */
+  range?: { inRange: boolean };
+  // TODO: tags not typed
 }
 
 interface StockAvailabilityItem {
@@ -129,6 +131,7 @@ export function projectStock(result: StockResponse) {
   const a = result.availabilities?.[0];
   return {
     availableForCashCarry: a?.availableForCashCarry ?? false,
+    inRange: a?.buyingOption?.cashCarry?.range?.inRange ?? null,
     quantity: a?.buyingOption?.cashCarry?.availability?.quantity ?? null,
     messageType: a?.buyingOption?.cashCarry?.availability?.probability?.thisDay?.messageType ?? null,
     eligibleForStockNotification: a?.buyingOption?.cashCarry?.eligibleForStockNotification ?? null,
@@ -154,6 +157,7 @@ export function projectMultiItemStock(result: StockResponse, itemNos: string[]) 
       return {
         itemNo,
         availableForCashCarry: false,
+        inRange: null as boolean | null,
         quantity: null as number | null,
         messageType: null as string | null,
         eligibleForStockNotification: null as boolean | null,
@@ -165,6 +169,7 @@ export function projectMultiItemStock(result: StockResponse, itemNos: string[]) 
       return {
         itemNo,
         availableForCashCarry: a.availableForCashCarry,
+        inRange: a.buyingOption?.cashCarry?.range?.inRange ?? null,
         quantity: a.buyingOption?.cashCarry?.availability?.quantity ?? null,
         messageType: a.buyingOption?.cashCarry?.availability?.probability?.thisDay?.messageType ?? null,
         eligibleForStockNotification: a.buyingOption?.cashCarry?.eligibleForStockNotification ?? null,
@@ -180,6 +185,7 @@ export function projectMultiItemStock(result: StockResponse, itemNos: string[]) 
     return {
       itemNo,
       availableForCashCarry: false,
+      inRange: null as boolean | null,
       quantity: null as number | null,
       messageType: null as string | null,
       eligibleForStockNotification: null as boolean | null,

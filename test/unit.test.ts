@@ -1,9 +1,10 @@
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
 import { storeIdsByCountry, STORE_LABELS, STORES, storeLabel, storeLabelFor, storeCountry, allStoreIds } from "../src/data/stores.js";
 import { readFileSync } from "node:fs";
 import { COUNTRY_CODES, DEFAULT_LANG_CODE, defaultLangCode, isCountryCode } from "../src/data/countries.js";
+import { checkCartAvailabilityTool } from "../src/tools/check_cart_availability.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ test("projectStock — stocked item returns correct shape", () => {
   const result = projectStock(makeStockResponse());
   assert.deepEqual(result, {
     availableForCashCarry: true,
+    inRange: null,
     quantity: 42,
     messageType: "HIGH_IN_STOCK",
     eligibleForStockNotification: false,
@@ -796,4 +798,88 @@ test("GetProductDetailsInput — langCode defaults to the country's language", (
   assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850", countryCode: "NO" }).langCode, "no");
   assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850" }).langCode, "en");
   assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850", countryCode: "NO", langCode: "en" }).langCode, "en");
+});
+
+// ── inRange ───────────────────────────────────────────────────────────────────
+
+function withRange(inRange: boolean, quantity?: number): StockResponse {
+  const base = makeStockResponse();
+  const a = base.availabilities![0];
+  const cashCarry: typeof a.buyingOption.cashCarry = {
+    ...a.buyingOption.cashCarry,
+    range: { inRange },
+  };
+  if (quantity === undefined) {
+    // Not in range: the API omits availability entirely.
+    delete (cashCarry as { availability?: unknown }).availability;
+  } else {
+    cashCarry.availability = { ...a.buyingOption.cashCarry.availability, quantity };
+  }
+  return {
+    ...base,
+    availabilities: [{ ...a, availableForCashCarry: inRange, buyingOption: { ...a.buyingOption, cashCarry } }],
+  };
+}
+
+test("projectStock — inRange false with no quantity means item not sold here", () => {
+  const result = projectStock(withRange(false));
+  assert.equal(result.inRange, false);
+  assert.equal(result.quantity, null);
+  assert.equal(result.availableForCashCarry, false);
+  assert.deepEqual(result.errors, []);
+});
+
+test("projectStock — inRange true passes through with quantity", () => {
+  const result = projectStock(withRange(true, 7));
+  assert.equal(result.inRange, true);
+  assert.equal(result.quantity, 7);
+});
+
+test("projectStock — inRange is null when the API omits range", () => {
+  assert.equal(projectStock(makeStockResponse()).inRange, null);
+  assert.equal(projectStock(makeStockResponse({ availabilities: [] })).inRange, null);
+});
+
+test("projectMultiItemStock — inRange per row, null on 405 and not-found", () => {
+  const stocked = projectMultiItemStock(
+    { availabilities: [makeAvailability("20522046", 3)], timestamp: "t" },
+    ["20522046", "99999999"]
+  );
+  assert.equal(stocked[0].inRange, null); // makeAvailability has no range
+  assert.equal(stocked[1].inRange, null);
+  assert.equal(stocked[1].errors[0].code, 404);
+
+  const storeError = projectMultiItemStock(
+    { availabilities: null, errors: [{ code: 405, message: "Store not found" }], timestamp: "t" },
+    ["20522046"]
+  );
+  assert.equal(storeError[0].inRange, null);
+
+  const inRange = projectMultiItemStock(withRange(true, 7), ["20522046"]);
+  assert.equal(inRange[0].inRange, true);
+  const notInRange = projectMultiItemStock(withRange(false), ["20522046"]);
+  assert.equal(notInRange[0].inRange, false);
+  assert.equal(notInRange[0].quantity, null);
+});
+
+test("check_cart_availability — item outside the store's range is insufficient, not a crash", async () => {
+  const body = withRange(false);
+  const fetchMock = mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })
+  );
+  try {
+    const res = await checkCartAvailabilityTool.handler({ storeId: "095", items: [{ itemNo: "20522046", quantity: 1 }] });
+    const out = JSON.parse(res.content[0].text) as {
+      allSufficient: boolean;
+      items: { inStock: number | null; sufficient: boolean; inRange: boolean | null; errors: unknown[] }[];
+    };
+    assert.equal(out.allSufficient, false);
+    assert.equal(out.items[0].inStock, null);
+    assert.equal(out.items[0].sufficient, false);
+    assert.equal(out.items[0].inRange, false);
+    assert.deepEqual(out.items[0].errors, []);
+    assert.equal(fetchMock.mock.callCount(), 1);
+  } finally {
+    fetchMock.mock.restore();
+  }
 });

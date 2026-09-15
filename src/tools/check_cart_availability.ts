@@ -52,6 +52,7 @@ export const checkCartAvailabilityTool = {
           itemNo: item.itemNo,
           quantity: item.quantity,
           inStock: null as number | null,
+          inRange: null as boolean | null,
           sufficient: false,
           eligibleForStockNotification: null as boolean | null,
           errors: [{ code: storeError.code, message: storeError.message, meaning: "store ID does not exist" }],
@@ -59,13 +60,14 @@ export const checkCartAvailabilityTool = {
       }
       const a = byItemNo.get(item.itemNo);
       if (a) {
-        const inStock = a.buyingOption.cashCarry.availability.quantity;
+        const inStock = a.buyingOption?.cashCarry?.availability?.quantity ?? null;
         return {
           itemNo: item.itemNo,
           quantity: item.quantity,
           inStock,
-          sufficient: inStock >= item.quantity,
-          eligibleForStockNotification: a.buyingOption.cashCarry.eligibleForStockNotification ?? null,
+          inRange: a.buyingOption?.cashCarry?.range?.inRange ?? null,
+          sufficient: inStock !== null && inStock >= item.quantity,
+          eligibleForStockNotification: a.buyingOption?.cashCarry?.eligibleForStockNotification ?? null,
           errors: [] as { code: number; message: string; meaning: string }[],
         };
       }
@@ -74,6 +76,7 @@ export const checkCartAvailabilityTool = {
         itemNo: item.itemNo,
         quantity: item.quantity,
         inStock: null as number | null,
+        inRange: null as boolean | null,
         sufficient: false,
         eligibleForStockNotification: null as boolean | null,
         errors: err
