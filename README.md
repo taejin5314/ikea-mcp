@@ -112,7 +112,7 @@ Check stock at a single IKEA store.
   "inRange": true,
   "quantity": 110,
   "messageType": "HIGH_IN_STOCK",
-  "errors": null
+  "errors": []
 }
 ```
 
@@ -180,6 +180,7 @@ Check cash-and-carry stock for multiple items at a single store in one call.
     "storeId": "399",
     "storeLabel": "399 (Burbank, CA)",
     "availableForCashCarry": true,
+    "inRange": true,
     "quantity": 104,
     "messageType": "HIGH_IN_STOCK",
     "errors": []
@@ -523,8 +524,8 @@ Item numbers are per market. An item found with `countryCode: "US"` may not exis
 
 | Country | Code | Store count |
 |---|---|---|
-| United States | `US` | ~52 |
-| Canada | `CA` | ~15 |
+| United States | `US` | 52 |
+| Canada | `CA` | 15 |
 | Norway | `NO` | 7 |
 
 Use `list_stores` to get the current catalog. Some store IDs in the catalog are unverified — they are listed but may return 405 from the stock API.

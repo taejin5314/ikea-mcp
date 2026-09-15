@@ -6,7 +6,7 @@ export const COUNTRY_CODES = ["US", "CA", "NO"] as const;
 export type CountryCode = (typeof COUNTRY_CODES)[number];
 
 /** Default language for the IKEA search API when the client does not pass langCode. */
-export const DEFAULT_LANG_CODE: Record<CountryCode, string> = {
+export const DEFAULT_LANG_CODE: Readonly<Record<CountryCode, string>> = {
   US: "en",
   CA: "en",
   NO: "no",

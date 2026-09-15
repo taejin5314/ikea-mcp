@@ -4,7 +4,7 @@ import { storeLabel } from "../data/stores.js";
 
 export const checkStoreStockTool = {
   name: "check_store_stock",
-  description: "Check cash-and-carry stock availability for an item at a specific IKEA store. inRange: false means the item is not sold at that store or in that country's market.",
+  description: "Check cash-and-carry stock availability for an item at a specific IKEA store. inRange: false means the item is not sold at that store or in that country's market; null means the upstream response carried no range information.",
   inputSchema: {
     type: "object",
     properties: {

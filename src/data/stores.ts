@@ -127,7 +127,7 @@ export function storeLabelFor(store: StoreRecord): string {
 const BY_ID: ReadonlyMap<string, StoreRecord> = new Map(STORES.map((s) => [s.storeId, s]));
 
 /** storeId → label. Kept for backward compatibility; prefer storeLabel() / STORES. */
-export const STORE_LABELS: Record<string, string> = Object.fromEntries(
+export const STORE_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
   STORES.map((s) => [s.storeId, storeLabelFor(s)])
 );
 

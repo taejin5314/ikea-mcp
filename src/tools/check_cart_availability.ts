@@ -5,7 +5,7 @@ import { storeLabel } from "../data/stores.js";
 export const checkCartAvailabilityTool = {
   name: "check_cart_availability",
   description:
-    "Check whether all items in a shopping list are available in sufficient quantity at a single IKEA store. inRange: false on an item means the item is not sold at that store or in that country's market.",
+    "Check whether all items in a shopping list are available in sufficient quantity at a single IKEA store. inRange: false on an item means the item is not sold at that store or in that country's market; null means the upstream response carried no range information.",
   inputSchema: {
     type: "object",
     properties: {

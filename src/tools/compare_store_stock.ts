@@ -7,7 +7,7 @@ import { COUNTRY_CODES, type CountryCode } from "../data/countries.js";
 export const compareStoreStockTool = {
   name: "compare_store_stock",
   description:
-    "Compare cash-and-carry stock for an item across multiple IKEA stores. Provide explicit storeIds, or use countryCode ('US', 'CA' or 'NO') to compare all catalog stores for that country. inRange: false on a row means the item is not sold at that store or in that country's market.",
+    "Compare cash-and-carry stock for an item across multiple IKEA stores. Provide explicit storeIds, or use countryCode ('US', 'CA' or 'NO') to compare all catalog stores for that country. inRange: false on a row means the item is not sold at that store or in that country's market; null means the upstream response carried no range information.",
   inputSchema: {
     type: "object",
     properties: {

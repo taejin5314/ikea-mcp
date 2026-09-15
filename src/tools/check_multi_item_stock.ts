@@ -5,7 +5,7 @@ import { storeLabel } from "../data/stores.js";
 export const checkMultiItemStockTool = {
   name: "check_multi_item_stock",
   description:
-    "Check cash-and-carry stock for multiple items at a single IKEA store. inRange: false on a row means the item is not sold at that store or in that country's market.",
+    "Check cash-and-carry stock for multiple items at a single IKEA store. inRange: false on a row means the item is not sold at that store or in that country's market; null means the upstream response carried no range information.",
   inputSchema: {
     type: "object",
     properties: {
