@@ -77,7 +77,7 @@ interface StockAvailability {
 }
 
 interface StockCashCarry {
-  availability: StockAvailability;
+  availability?: StockAvailability; // omitted when range.inRange is false
   availableForCashCarry?: boolean; // observed at top-level availability; repeated here
   eligibleForStockNotification: boolean;
   unitOfMeasure: string;

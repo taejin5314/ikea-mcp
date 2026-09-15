@@ -489,7 +489,7 @@ function projectCart(
     if (storeError) return { itemNo: item.itemNo, inStock: null, sufficient: false };
     const a = byItemNo.get(item.itemNo);
     if (a) {
-      const inStock = a.buyingOption.cashCarry.availability.quantity;
+      const inStock = a.buyingOption.cashCarry.availability!.quantity; // makeAvailability always sets it
       return { itemNo: item.itemNo, inStock, sufficient: inStock >= item.quantity };
     }
     return { itemNo: item.itemNo, inStock: null, sufficient: false };
@@ -811,9 +811,9 @@ function withRange(inRange: boolean, quantity?: number): StockResponse {
   };
   if (quantity === undefined) {
     // Not in range: the API omits availability entirely.
-    delete (cashCarry as { availability?: unknown }).availability;
+    delete cashCarry.availability;
   } else {
-    cashCarry.availability = { ...a.buyingOption.cashCarry.availability, quantity };
+    cashCarry.availability = { ...a.buyingOption.cashCarry.availability!, quantity };
   }
   return {
     ...base,
