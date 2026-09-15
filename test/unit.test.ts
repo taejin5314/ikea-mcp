@@ -363,7 +363,7 @@ test("projectMultiItemStock — invalid store (405) all items get store error", 
 
 // ── compareStoreStock input resolution ───────────────────────────────────────
 
-import { CompareStoreStockInput, CheckCartAvailabilityInput, FindBestStoreForCartInput, ListStoresInput, CheckMultiItemStockInput, FindBestStoreInput } from "../src/schemas/index.js";
+import { CompareStoreStockInput, CheckCartAvailabilityInput, FindBestStoreForCartInput, ListStoresInput, CheckMultiItemStockInput, FindBestStoreInput, SearchProductsInput, GetProductDetailsInput } from "../src/schemas/index.js";
 
 test("compareStoreStock — storeIds provided, no countryCode: uses storeIds", () => {
   const input = CompareStoreStockInput.parse({ itemNo: "20522046", storeIds: ["399", "026"] });
@@ -758,4 +758,42 @@ test("stores — storeLabel and storeCountry are undefined for unknown IDs", () 
 test("stores — no duplicate store IDs", () => {
   const ids = allStoreIds();
   assert.equal(new Set(ids).size, ids.length);
+});
+
+// ── country enum and langCode defaults ────────────────────────────────────────
+
+test("ListStoresInput — accepts lowercase no and normalises to NO", () => {
+  assert.equal(ListStoresInput.parse({ countryCode: "no" }).countryCode, "NO");
+  assert.equal(ListStoresInput.parse({ countryCode: "CA" }).countryCode, "CA");
+});
+
+test("ListStoresInput — rejects countries outside the catalog", () => {
+  assert.throws(() => ListStoresInput.parse({ countryCode: "SE" }));
+});
+
+test("CompareStoreStockInput — countryCode NO is accepted", () => {
+  const input = CompareStoreStockInput.parse({ itemNo: "00263850", countryCode: "no" });
+  assert.equal(input.countryCode, "NO");
+  assert.equal(input.storeIds, undefined);
+});
+
+test("SearchProductsInput — langCode defaults to the country's language", () => {
+  assert.equal(SearchProductsInput.parse({ query: "billy", countryCode: "NO" }).langCode, "no");
+  assert.equal(SearchProductsInput.parse({ query: "billy", countryCode: "no" }).langCode, "no");
+  assert.equal(SearchProductsInput.parse({ query: "billy", countryCode: "CA" }).langCode, "en");
+  assert.equal(SearchProductsInput.parse({ query: "billy" }).langCode, "en");
+  assert.equal(SearchProductsInput.parse({ query: "billy", countryCode: "SE" }).langCode, "en");
+});
+
+test("SearchProductsInput — explicit langCode wins over the country default", () => {
+  const input = SearchProductsInput.parse({ query: "billy", countryCode: "NO", langCode: "en" });
+  assert.equal(input.langCode, "en");
+  assert.equal(input.countryCode, "NO");
+  assert.equal(input.size, 10);
+});
+
+test("GetProductDetailsInput — langCode defaults to the country's language", () => {
+  assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850", countryCode: "NO" }).langCode, "no");
+  assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850" }).langCode, "en");
+  assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850", countryCode: "NO", langCode: "en" }).langCode, "en");
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { COUNTRY_CODES, defaultLangCode } from "../data/countries.js";
 
 // ── normalizeItemNo ───────────────────────────────────────────────────────────
 
@@ -40,18 +41,24 @@ const toUpper = (v: unknown): unknown =>
 // Used by search and product-detail tools that accept any country code.
 const CountryCode2 = z.preprocess(toUpper, z.string().length(2));
 
-// Uppercase-normalised enum restricted to the two countries supported by the
-// stock-lookup API. Accepts "us"/"ca" and normalises to "US"/"CA".
-const CountryCodeEnum = z.preprocess(toUpper, z.enum(["US", "CA"]));
+// Uppercase-normalised enum restricted to the countries in the store catalog.
+// Accepts "us"/"ca"/"no" and normalises to "US"/"CA"/"NO".
+const CountryCodeEnum = z.preprocess(toUpper, z.enum(COUNTRY_CODES));
+
+// Two-letter language code for the search API. Optional on input; filled from the
+// country's default (see defaultLangCode) when omitted.
+const LangCode = z.string().length(2);
 
 // ── Input schemas ─────────────────────────────────────────────────────────────
 
-export const SearchProductsInput = z.object({
-  query: z.string().min(1),
-  countryCode: CountryCode2.default("US"),
-  langCode: z.string().length(2).default("en"),
-  size: z.number().int().min(1).max(50).default(10),
-});
+export const SearchProductsInput = z
+  .object({
+    query: z.string().min(1),
+    countryCode: CountryCode2.default("US"),
+    langCode: LangCode.optional(),
+    size: z.number().int().min(1).max(50).default(10),
+  })
+  .transform((d) => ({ ...d, langCode: d.langCode ?? defaultLangCode(d.countryCode) }));
 
 export const CheckStoreStockInput = z.object({
   itemNo: ItemNo,
@@ -83,11 +90,13 @@ export const FindBestStoreInput = z.object({
   minQuantity: z.number().int().min(1).optional(),
 });
 
-export const GetProductDetailsInput = z.object({
-  itemNo: ItemNo,
-  countryCode: CountryCode2.default("US"),
-  langCode: z.string().length(2).default("en"),
-});
+export const GetProductDetailsInput = z
+  .object({
+    itemNo: ItemNo,
+    countryCode: CountryCode2.default("US"),
+    langCode: LangCode.optional(),
+  })
+  .transform((d) => ({ ...d, langCode: d.langCode ?? defaultLangCode(d.countryCode) }));
 
 export const CheckMultiItemStockInput = z.object({
   storeId: z.string().min(1),
