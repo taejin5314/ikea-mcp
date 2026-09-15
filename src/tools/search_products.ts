@@ -8,8 +8,8 @@ export const searchProductsTool = {
     type: "object",
     properties: {
       query: { type: "string" },
-      countryCode: { type: "string", default: "us" },
-      langCode: { type: "string", default: "en" },
+      countryCode: { type: "string", default: "US", description: "Two-letter country code of the IKEA market to search, e.g. US, CA, NO." },
+      langCode: { type: "string", description: "Two-letter language code. Defaults to the country's language: en for US and CA, no for NO." },
       size: { type: "number", default: 10 },
     },
     required: ["query"],

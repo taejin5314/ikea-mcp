@@ -4,6 +4,12 @@ import { projectStock, projectProduct, projectMultiItemStock, type StockResponse
 import { storeIdsByCountry, STORE_LABELS, STORES, storeLabel, storeLabelFor, storeCountry, allStoreIds } from "../src/data/stores.js";
 import { readFileSync } from "node:fs";
 import { COUNTRY_CODES, DEFAULT_LANG_CODE, defaultLangCode, isCountryCode } from "../src/data/countries.js";
+import { listStoresTool } from "../src/tools/list_stores.js";
+import { compareStoreStockTool } from "../src/tools/compare_store_stock.js";
+import { findBestStoreForItemTool } from "../src/tools/find_best_store_for_item.js";
+import { findBestStoreForCartTool } from "../src/tools/find_best_store_for_cart.js";
+import { searchProductsTool } from "../src/tools/search_products.js";
+import { getProductDetailsTool } from "../src/tools/get_product_details.js";
 import { checkCartAvailabilityTool } from "../src/tools/check_cart_availability.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -881,5 +887,52 @@ test("check_cart_availability — item outside the store's range is insufficient
     assert.equal(fetchMock.mock.callCount(), 1);
   } finally {
     fetchMock.mock.restore();
+  }
+});
+
+// ── list_stores handler and tool schemas ──────────────────────────────────────
+
+async function listStores(args: Record<string, unknown>) {
+  const res = await listStoresTool.handler(args);
+  return JSON.parse(res.content[0].text) as { stores: { storeId: string; storeLabel: string; countryCode: string }[] };
+}
+
+test("list_stores — countryCode NO returns the seven Norwegian stores", async () => {
+  const { stores } = await listStores({ countryCode: "NO" });
+  assert.deepEqual(stores.map((s) => s.storeId), ["007", "091", "095", "126", "371", "390", "441"]);
+  assert.ok(stores.every((s) => s.countryCode === "NO"));
+  assert.equal(stores[2].storeLabel, "095 (Furuset, Oslo, NO)");
+});
+
+test("list_stores — no filter returns all 74 stores with correct country tags", async () => {
+  const { stores } = await listStores({});
+  assert.equal(stores.length, 74);
+  assert.equal(stores.filter((s) => s.countryCode === "US").length, 52);
+  assert.equal(stores.filter((s) => s.countryCode === "CA").length, 15);
+  assert.equal(stores.filter((s) => s.countryCode === "NO").length, 7);
+  assert.equal(stores.find((s) => s.storeId === "149")?.countryCode, "CA");
+  assert.equal(stores.find((s) => s.storeId === "399")?.countryCode, "US");
+});
+
+test("list_stores — countryCode CA still returns 15 stores", async () => {
+  const { stores } = await listStores({ countryCode: "ca" });
+  assert.equal(stores.length, 15);
+  assert.ok(stores.every((s) => s.countryCode === "CA"));
+});
+
+test("tool schemas — every countryCode enum lists US, CA and NO", () => {
+  for (const tool of [listStoresTool, compareStoreStockTool, findBestStoreForItemTool, findBestStoreForCartTool]) {
+    const prop = (tool.inputSchema.properties as unknown as Record<string, { enum?: string[] }>).countryCode;
+    assert.deepEqual(prop.enum, ["US", "CA", "NO"], `${tool.name} countryCode enum`);
+    assert.match(tool.description, /'US', 'CA' or 'NO'/, `${tool.name} description`);
+  }
+});
+
+test("tool schemas — search tools document the langCode default and no longer hardcode en", () => {
+  for (const tool of [searchProductsTool, getProductDetailsTool]) {
+    const props = tool.inputSchema.properties as unknown as Record<string, { default?: unknown; description?: string }>;
+    assert.equal(props.langCode.default, undefined, `${tool.name} langCode default`);
+    assert.match(props.langCode.description ?? "", /no for NO/, `${tool.name} langCode description`);
+    assert.equal(props.countryCode.default, "US", `${tool.name} countryCode default`);
   }
 });

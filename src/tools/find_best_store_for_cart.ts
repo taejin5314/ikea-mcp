@@ -1,12 +1,13 @@
 import { FindBestStoreForCartInput } from "../schemas/index.js";
 import { getMultiItemStock, projectMultiItemStock } from "../services/ikea.js";
-import { STORE_LABELS, storeLabel, storeIdsByCountry } from "../data/stores.js";
+import { allStoreIds, storeLabel, storeIdsByCountry } from "../data/stores.js";
 import { pMap } from "../utils/http.js";
+import { COUNTRY_CODES } from "../data/countries.js";
 
 export const findBestStoreForCartTool = {
   name: "find_best_store_for_cart",
   description:
-    "Find the best store to buy multiple items in one trip. Ranks stores by how many cart items are available in sufficient quantity, then by total in-stock sum. Optionally filter by countryCode ('US' or 'CA'). Explicit storeIds take precedence over countryCode.",
+    "Find the best store to buy multiple items in one trip. Ranks stores by how many cart items are available in sufficient quantity, then by total in-stock sum. Optionally filter by countryCode ('US', 'CA' or 'NO'). Explicit storeIds take precedence over countryCode.",
   inputSchema: {
     type: "object",
     properties: {
@@ -24,7 +25,7 @@ export const findBestStoreForCartTool = {
         maxItems: 20,
       },
       storeIds: { type: "array", items: { type: "string" } },
-      countryCode: { type: "string", enum: ["US", "CA"] },
+      countryCode: { type: "string", enum: [...COUNTRY_CODES] },
       maxResults: { type: "number", default: 3 },
     },
     required: ["items"],
@@ -32,7 +33,7 @@ export const findBestStoreForCartTool = {
   async handler(rawInput: unknown) {
     const input = FindBestStoreForCartInput.parse(rawInput);
     const targetIds = input.storeIds
-      ?? (input.countryCode ? storeIdsByCountry(input.countryCode) : Object.keys(STORE_LABELS));
+      ?? (input.countryCode ? storeIdsByCountry(input.countryCode) : allStoreIds());
     const itemNos = input.items.map((i) => i.itemNo);
 
     const storeResults = await pMap(
