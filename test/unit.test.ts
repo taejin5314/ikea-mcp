@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
 import { storeIdsByCountry, STORE_LABELS } from "../src/data/stores.js";
+import { COUNTRY_CODES, DEFAULT_LANG_CODE, defaultLangCode, isCountryCode } from "../src/data/countries.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -693,3 +694,31 @@ if (process.env.CANARY) {
     }
   });
 }
+
+// ── countries ─────────────────────────────────────────────────────────────────
+
+test("countries — COUNTRY_CODES lists US, CA and NO in that order", () => {
+  assert.deepEqual([...COUNTRY_CODES], ["US", "CA", "NO"]);
+});
+
+test("countries — every country has a default language", () => {
+  for (const cc of COUNTRY_CODES) {
+    assert.equal(typeof DEFAULT_LANG_CODE[cc], "string");
+  }
+  assert.equal(DEFAULT_LANG_CODE.NO, "no");
+  assert.equal(DEFAULT_LANG_CODE.US, "en");
+  assert.equal(DEFAULT_LANG_CODE.CA, "en");
+});
+
+test("countries — defaultLangCode falls back to en for unknown countries", () => {
+  assert.equal(defaultLangCode("NO"), "no");
+  assert.equal(defaultLangCode("US"), "en");
+  assert.equal(defaultLangCode("SE"), "en");
+  assert.equal(defaultLangCode(""), "en");
+});
+
+test("countries — isCountryCode is a type guard over COUNTRY_CODES", () => {
+  assert.equal(isCountryCode("NO"), true);
+  assert.equal(isCountryCode("no"), false);
+  assert.equal(isCountryCode("SE"), false);
+});
