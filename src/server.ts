@@ -19,6 +19,9 @@ import { toToolError } from "./utils/errors.js";
 // The version the server reports is the package version, read from package.json next to dist/ (or src/ in dev).
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
+// The version the server reports is the package version, read from package.json next to dist/ (or src/ in dev).
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
 const tools = [listStoresTool, searchProductsTool, checkStoreStockTool, compareStoreStockTool, findBestStoreForItemTool, getProductDetailsTool, checkMultiItemStockTool, checkCartAvailabilityTool, findBestStoreForCartTool];
 
 // Every tool only reads. All but list_stores call the live IKEA API, so their answers can change between calls.
