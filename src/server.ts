@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
@@ -14,11 +15,14 @@ import { listStoresTool } from "./tools/list_stores.js";
 import { checkCartAvailabilityTool } from "./tools/check_cart_availability.js";
 import { findBestStoreForCartTool } from "./tools/find_best_store_for_cart.js";
 
+// The version the server reports is the package version, read from package.json next to dist/ (or src/ in dev).
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
 const tools = [listStoresTool, searchProductsTool, checkStoreStockTool, compareStoreStockTool, findBestStoreForItemTool, getProductDetailsTool, checkMultiItemStockTool, checkCartAvailabilityTool, findBestStoreForCartTool];
 
 export function createServer(): Server {
   const server = new Server(
-    { name: "ikea-mcp", version: "1.0.0" },
+    { name: "ikea-mcp", version },
     { capabilities: { tools: {} } }
   );
 
