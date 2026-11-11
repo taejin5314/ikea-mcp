@@ -14,16 +14,19 @@ import { checkMultiItemStockTool } from "./tools/check_multi_item_stock.js";
 import { listStoresTool } from "./tools/list_stores.js";
 import { checkCartAvailabilityTool } from "./tools/check_cart_availability.js";
 import { findBestStoreForCartTool } from "./tools/find_best_store_for_cart.js";
+import { findNearbyStoresTool } from "./tools/find_nearby_stores.js";
 import { toToolError } from "./utils/errors.js";
 
 // The version the server reports is the package version, read from package.json next to dist/ (or src/ in dev).
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-const tools = [listStoresTool, searchProductsTool, checkStoreStockTool, compareStoreStockTool, findBestStoreForItemTool, getProductDetailsTool, checkMultiItemStockTool, checkCartAvailabilityTool, findBestStoreForCartTool];
+const tools = [listStoresTool, findNearbyStoresTool, searchProductsTool, checkStoreStockTool, compareStoreStockTool, findBestStoreForItemTool, getProductDetailsTool, checkMultiItemStockTool, checkCartAvailabilityTool, findBestStoreForCartTool];
 
-// Every tool only reads. All but list_stores call the live IKEA API, so their answers can change between calls.
+// Every tool only reads. All but the two catalog tools call the live IKEA API, so their answers can change between calls.
+const CATALOG_ONLY = new Set(["list_stores", "find_nearby_stores"]);
 const TITLES: Record<string, string> = {
   list_stores: "List IKEA stores",
+  find_nearby_stores: "Find IKEA stores near a place",
   search_products: "Search IKEA products",
   get_product_details: "Get IKEA product details",
   check_store_stock: "Check stock at one store",
@@ -44,7 +47,7 @@ export function listTools() {
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: name !== "list_stores",
+      openWorldHint: !CATALOG_ONLY.has(name),
     },
   }));
 }

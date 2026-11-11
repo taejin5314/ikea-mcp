@@ -15,6 +15,10 @@ import { callTool, listTools } from "../src/server.js";
 import { toToolError } from "../src/utils/errors.js";
 import { fetchJson, REQUEST_TIMEOUT_MS } from "../src/utils/http.js";
 import { ZodError } from "zod";
+import { distanceKm, nearestStores } from "../src/data/geo.js";
+import { STORE_COORDINATES } from "../src/data/store-coordinates.js";
+import { findNearbyStoresTool } from "../src/tools/find_nearby_stores.js";
+import { resolveTargets } from "../src/tools/targets.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -988,14 +992,14 @@ test("toToolError lists every invalid field of a zod error", () => {
   );
 });
 
-test("every listed tool is annotated read-only with a title; only list_stores is closed-world", () => {
+test("every listed tool is annotated read-only with a title; only the catalog tools are closed-world", () => {
   const listed = listTools();
-  assert.equal(listed.length, 9);
+  assert.equal(listed.length, 10);
   for (const tool of listed) {
     assert.ok(tool.annotations.title, `${tool.name} has a title`);
     assert.equal(tool.annotations.readOnlyHint, true, tool.name);
     assert.equal(tool.annotations.destructiveHint, false, tool.name);
-    assert.equal(tool.annotations.openWorldHint, tool.name !== "list_stores", tool.name);
+    assert.equal(tool.annotations.openWorldHint, !["list_stores", "find_nearby_stores"].includes(tool.name), tool.name);
   }
 });
 
@@ -1009,6 +1013,122 @@ test("fetchJson gives every request a timeout signal", async () => {
     await fetchJson("https://example.invalid/x");
     assert.ok(signal instanceof AbortSignal, "fetch was called with an AbortSignal");
     assert.equal(REQUEST_TIMEOUT_MS, 10_000);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+// ── Distance search ───────────────────────────────────────────────────────────
+
+const TORONTO = { lat: 43.6532, lon: -79.3832 };
+const OSLO = { lat: 59.9139, lon: 10.7522 };
+
+test("distanceKm matches a known city pair within one percent", () => {
+  // Toronto to Montreal city centres: about 504 km great-circle.
+  const km = distanceKm(TORONTO, { lat: 45.5019, lon: -73.5674 });
+  assert.ok(Math.abs(km - 504) < 5, `got ${km}`);
+  assert.equal(distanceKm(TORONTO, TORONTO), 0);
+});
+
+test("every coordinate belongs to a catalog store and is a plausible place for its country", () => {
+  const box = { US: [18, 72, -170, -66], CA: [41, 70, -141, -52], NO: [57, 72, 4, 32] } as const;
+  for (const [storeId, at] of Object.entries(STORE_COORDINATES)) {
+    const country = storeCountry(storeId);
+    assert.ok(country, `${storeId} is in the catalog`);
+    const [south, north, west, east] = box[country!];
+    assert.ok(at.lat >= south && at.lat <= north && at.lon >= west && at.lon <= east, `${storeId} (${country}) at ${at.lat},${at.lon}`);
+  }
+  assert.ok(Object.keys(STORE_COORDINATES).length >= STORES.length - 2, "nearly every catalog store has a coordinate");
+});
+
+test("nearestStores returns the closest stores first and respects country, limit and radius", () => {
+  const near = nearestStores(TORONTO, { limit: 3 });
+  assert.equal(near.length, 3);
+  assert.ok(near.every((s) => s.countryCode === "CA"), "the three closest stores to Toronto are Canadian");
+  assert.ok(near[0].distanceKm <= near[1].distanceKm && near[1].distanceKm <= near[2].distanceKm);
+  assert.ok(near[0].distanceKm < 30, `closest store to downtown Toronto is in the city, got ${near[0].distanceKm} km`);
+
+  assert.ok(nearestStores(TORONTO, { limit: 5, countryCode: "US" }).every((s) => s.countryCode === "US"));
+  assert.deepEqual(nearestStores(OSLO, { limit: 20, maxDistanceKm: 30 }).map((s) => s.countryCode), ["NO", "NO"]);
+  assert.deepEqual(nearestStores(TORONTO, { limit: 5, maxDistanceKm: 0.001 }), []);
+});
+
+test("find_nearby_stores answers from the catalog without calling IKEA", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response("{}"));
+  try {
+    const out = JSON.parse((await findNearbyStoresTool.handler({ latitude: OSLO.lat, longitude: OSLO.lon, maxResults: 2 })).content[0].text);
+    assert.equal(out.stores.length, 2);
+    assert.match(out.stores[0].storeLabel, /NO\)$/);
+    assert.equal(typeof out.stores[0].distanceKm, "number");
+    assert.equal(fetchMock.mock.callCount(), 0);
+  } finally {
+    fetchMock.mock.restore();
+  }
+  await assert.rejects(() => findNearbyStoresTool.handler({ latitude: 91, longitude: 0 }));
+});
+
+test("resolveTargets: storeIds win, then near, then countryCode, then the whole catalog", () => {
+  const near = { latitude: TORONTO.lat, longitude: TORONTO.lon };
+  assert.deepEqual(resolveTargets({ storeIds: ["399"], near, countryCode: "NO", nearestStores: 5 }).storeIds, ["399"]);
+
+  const byNear = resolveTargets({ near, nearestStores: 4 });
+  assert.equal(byNear.storeIds.length, 4);
+  assert.equal(byNear.distances.size, 4);
+  assert.ok(byNear.storeIds.every((id) => storeCountry(id) === "CA"));
+
+  const nearInCountry = resolveTargets({ near, countryCode: "US", nearestStores: 3 });
+  assert.ok(nearInCountry.storeIds.every((id) => storeCountry(id) === "US"));
+
+  assert.deepEqual(resolveTargets({ countryCode: "NO", nearestStores: 5 }).storeIds, storeIdsByCountry("NO"));
+  assert.deepEqual(resolveTargets({ nearestStores: 5 }).storeIds, allStoreIds());
+});
+
+test("find_best_store_for_item with near searches only the closest stores and reports their distance", async () => {
+  const asked: string[] = [];
+  const fetchMock = mock.method(globalThis, "fetch", async (url: unknown) => {
+    asked.push(String(url).match(/\/sto\/(\d+)/)?.[1] ?? "?");
+    return new Response(JSON.stringify(makeStockResponse()));
+  });
+  try {
+    const rows = JSON.parse(
+      (await findBestStoreForItemTool.handler({ itemNo: "20522046", near: { latitude: TORONTO.lat, longitude: TORONTO.lon }, nearestStores: 3 })).content[0].text
+    );
+    assert.equal(asked.length, 3, "only the three closest stores were queried");
+    assert.ok(asked.every((id) => storeCountry(id) === "CA"));
+    assert.equal(rows.length, 3);
+    assert.ok(rows.every((r: { distanceKm?: number }) => typeof r.distanceKm === "number"));
+    assert.ok(rows[0].distanceKm <= rows[1].distanceKm && rows[1].distanceKm <= rows[2].distanceKm, "nearest first");
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("find_best_store_for_item without near keeps its old output shape", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(makeStockResponse())));
+  try {
+    const rows = JSON.parse((await findBestStoreForItemTool.handler({ itemNo: "20522046", storeIds: ["399", "026"] })).content[0].text);
+    assert.deepEqual(Object.keys(rows[0]), ["storeId", "storeLabel", "availableForCashCarry", "quantity", "messageType"]);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("find_best_store_for_cart with near ranks equally good stores nearest first", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(makeStockResponse())));
+  try {
+    const rows = JSON.parse(
+      (
+        await findBestStoreForCartTool.handler({
+          items: [{ itemNo: "20522046", quantity: 1 }],
+          near: { latitude: TORONTO.lat, longitude: TORONTO.lon },
+          nearestStores: 4,
+          maxResults: 4,
+        })
+      ).content[0].text
+    );
+    assert.equal(rows.length, 4);
+    const km = rows.map((r: { distanceKm: number }) => r.distanceKm);
+    assert.deepEqual(km, [...km].sort((a, b) => a - b));
   } finally {
     fetchMock.mock.restore();
   }

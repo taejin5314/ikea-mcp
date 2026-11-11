@@ -82,11 +82,28 @@ export const ListStoresInput = z.object({
   countryCode: CountryCodeEnum.optional(),
 });
 
+// A point on the map: the user's city or address, in decimal degrees.
+const Near = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+});
+const NearestStores = z.number().int().min(1).max(20).default(5);
+
+export const FindNearbyStoresInput = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  countryCode: CountryCodeEnum.optional(),
+  maxResults: z.number().int().min(1).max(20).default(5),
+  maxDistanceKm: z.number().positive().optional(),
+});
+
 export const FindBestStoreInput = z.object({
   itemNo: ItemNo,
   storeIds: z.array(z.string().min(1)).optional(),
   maxResults: z.number().int().min(1).max(50).default(3),
   countryCode: CountryCodeEnum.optional(),
+  near: Near.optional(),
+  nearestStores: NearestStores,
   minQuantity: z.number().int().min(1).optional(),
 });
 
@@ -122,6 +139,8 @@ export const FindBestStoreForCartInput = z.object({
   ).min(1).max(20),
   storeIds: z.array(z.string().min(1)).optional(),
   countryCode: CountryCodeEnum.optional(),
+  near: Near.optional(),
+  nearestStores: NearestStores,
   maxResults: z.number().int().min(1).max(50).default(3),
 });
 
