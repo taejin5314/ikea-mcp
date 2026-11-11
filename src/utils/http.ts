@@ -1,11 +1,16 @@
 const RETRY_DELAY_MS = 500;
+/** No single request to IKEA may hang a tool call: give up after this long. */
+export const REQUEST_TIMEOUT_MS = 10_000;
 
 function shouldRetry(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
 async function attempt<T>(url: string, headers: Record<string, string>): Promise<T> {
-  const res = await fetch(url, { headers: { Accept: "application/json", ...headers } });
+  const res = await fetch(url, {
+    headers: { Accept: "application/json", ...headers },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (!res.ok) {
     if (shouldRetry(res.status)) {
       const retryAfter = Number(res.headers.get("Retry-After") ?? 0) * 1000;

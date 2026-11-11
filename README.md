@@ -3,6 +3,8 @@
 [![npm](https://img.shields.io/npm/v/ikea-mcp)](https://www.npmjs.com/package/ikea-mcp)
 [![node](https://img.shields.io/node/v/ikea-mcp)](package.json)
 [![license](https://img.shields.io/npm/l/ikea-mcp)](LICENSE)
+[![CI](https://github.com/taejin5314/ikea-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/taejin5314/ikea-mcp/actions/workflows/ci.yml)
+[![Live smoke](https://github.com/taejin5314/ikea-mcp/actions/workflows/live-smoke.yml/badge.svg)](https://github.com/taejin5314/ikea-mcp/actions/workflows/live-smoke.yml)
 
 An MCP server that lets an AI assistant search IKEA products and check live in-store stock in the US, Canada and Norway.
 Ask "which store near me has everything on this list?" and the assistant answers from IKEA's own stock data.
@@ -107,6 +109,13 @@ call took under 400 ms, including the one that asks all 15 Canadian stores.
 - **Errors that mean something.** A 404 is "not stocked here", a 405 is "not a valid store" and `inRange: false`
   is "not sold in this market"; each comes back as data on the row instead of failing the whole call, so an
   assistant can explain a partial answer.
+- **Failures the assistant can read.** Invalid arguments and upstream failures come back as tool results marked
+  `isError`, naming the field to fix, instead of protocol errors a client may hide. Every request to IKEA times out
+  after 10 seconds.
+- **Declared read-only.** Every tool carries MCP annotations (`readOnlyHint`, a title), so clients know they
+  change nothing.
+- **Watched daily.** A scheduled job runs the smoke test against the live API and opens an issue when IKEA changes
+  something.
 - **Forgiving input.** Item numbers are accepted as `20522046`, `005.221.32` or `5-221-32` and normalised.
 - **Small surface.** Two runtime dependencies (the MCP SDK and zod), inputs validated with zod schemas, unit tests
   on the logic and smoke tests over both transports against the live API.

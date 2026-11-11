@@ -1,0 +1,48 @@
+name: Live smoke
+
+# The server depends on unofficial IKEA endpoints that can change without notice.
+# Once a day, run the smoke test against the live API and open an issue when it fails.
+on:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Smoke test against the live IKEA API
+        run: node smoke.mjs 2>&1 | tee smoke.log
+        shell: bash -o pipefail {0}
+      - name: Open or update an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Live smoke test is failing
+        run: |
+          {
+            echo "The scheduled smoke test against the live IKEA API failed."
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo '```'
+            grep -E "FAIL|MISMATCH|ERROR" smoke.log | head -40 || tail -40 smoke.log
+            echo '```'
+          } > body.md
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file body.md
+          fi

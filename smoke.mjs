@@ -7,6 +7,13 @@ const server = spawn("node", [join(__dirname, "dist/index.js")], {
   stdio: ["pipe", "pipe", "pipe"],
 });
 
+let failed = false;
+const log = console.log.bind(console);
+console.log = (...args) => {
+  if (/\b(FAIL|MISMATCH|LOCALE_MISMATCH)\b/.test(args.join(" "))) failed = true;
+  log(...args);
+};
+
 let lines = [];
 let _buf = "";
 server.stdout.on("data", (d) => {
@@ -243,8 +250,9 @@ try {
     console.log(`list_stores[NO] ${d.stores?.length === 7 ? "OK" : "MISMATCH"} — ${d.stores?.length} store(s)`);
   }
 } catch (e) {
+  failed = true;
   console.error("ERROR:", e.message);
 } finally {
   server.kill();
-  process.exit(0);
+  process.exit(failed ? 1 : 0);
 }
