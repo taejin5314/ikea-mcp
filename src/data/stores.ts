@@ -5,15 +5,20 @@ import type { CountryCode } from "./countries.js";
 // NO store IDs confirmed from ikea.com/no/no/stores/<slug>/ pages ("id":"NNN" next to
 //   "buClassification" in the embedded JSON), all probed against the stock API 2026-09-15.
 // IDs match the sto/{storeId} path used by the IKEA stock API.
-// 4-digit IDs (921, 1099, 1129) are newer-format stores — confirmed working with stock API.
-// 3136 (San Francisco) returns 405 from stock API — excluded.
+// 4-digit IDs are newer-format and small-format stores — confirmed working with stock API.
+// Small-format stores added 2026-11-11 from IKEA's public store lists (buClassification SMALL with
+//   cash-and-carry), each probed against the stock API with item 20522046 and returning a quantity:
+//   US 658, 1013, 1100, 1130, 1132, 1232, 1253, 1284, 1309; CA 1340.
+// 508 (Memphis, TN) removed 2026-11-11: the stock API answers 422 "The store is currently inactive"
+//   and IKEA's store list no longer has it.
 // 698 (CA — unknown city) returns 422 from stock API — excluded.
+// scripts/audit-catalog.mjs compares this file with IKEA's store lists; a scheduled workflow runs it weekly.
 // 659 (Toronto Downtown) returns 200 but null quantity — included conservatively.
 // NO non-stock locations (no cash-and-carry range, returned by /ru/no but excluded here):
 //   722 IKEA på Karl Johan (Oslo, plan & order point), 1352 IKEA Østfold (SMALL),
 //   1213 Ski, 1214 Haugesund, 1215 Ålesund, 1216 Porsgrunn (plan & order points),
 //   1217 and 1218 (unknown, no ikea.com page found).
-// TODO: huntsville, arcadia, mcallen-pharr, san-marcos (US) — IDs not found on store pages.
+// Plan-and-order points (for example 680 Arcadia) carry no stock and are left out.
 // TODO: 448, 612, 634, 652, 661, 663, 692, 693 — valid API IDs, city/country unknown.
 
 export interface StoreRecord {
@@ -69,7 +74,6 @@ export const STORES: readonly StoreRecord[] = [
   { storeId: "413", city: "Covina", region: "CA", countryCode: "US" },
   { storeId: "462", city: "Las Vegas", region: "NV", countryCode: "US" },
   { storeId: "488", city: "Renton", region: "WA", countryCode: "US" },
-  { storeId: "508", city: "Memphis", region: "TN", countryCode: "US" },
   { storeId: "511", city: "Columbus", region: "OH", countryCode: "US" },
   { storeId: "535", city: "Grand Prairie", region: "TX", countryCode: "US" },
   { storeId: "536", city: "Fishers", region: "IN", countryCode: "US" },
@@ -77,9 +81,18 @@ export const STORES: readonly StoreRecord[] = [
   { storeId: "560", city: "Oak Creek", region: "WI", countryCode: "US" },
   { storeId: "569", city: "Norfolk", region: "VA", countryCode: "US" },
   { storeId: "570", city: "Live Oak", region: "TX", countryCode: "US" },
+  { storeId: "658", city: "San Francisco", region: "CA", countryCode: "US" },
   { storeId: "921", city: "Brooklyn", region: "NY", countryCode: "US" },
+  { storeId: "1013", city: "Rockwall", region: "TX", countryCode: "US" },
   { storeId: "1099", city: "University Park", region: "TX", countryCode: "US" },
+  { storeId: "1100", city: "Pharr", region: "TX", countryCode: "US" },
   { storeId: "1129", city: "Syracuse", region: "NY", countryCode: "US" },
+  { storeId: "1130", city: "Chantilly", region: "VA", countryCode: "US" },
+  { storeId: "1132", city: "Scottsdale", region: "AZ", countryCode: "US" },
+  { storeId: "1232", city: "Huntsville", region: "AL", countryCode: "US" },
+  { storeId: "1253", city: "Webster", region: "TX", countryCode: "US" },
+  { storeId: "1284", city: "Culver City", region: "CA", countryCode: "US" },
+  { storeId: "1309", city: "Tulsa", region: "OK", countryCode: "US" },
   // ── Canada ───────────────────────────────────────────────────────────────────
   // All probed against stock API with item 20522046 — all return 200.
   { storeId: "003", city: "Richmond", region: "BC", countryCode: "CA" },
@@ -97,6 +110,7 @@ export const STORES: readonly StoreRecord[] = [
   { storeId: "529", city: "Halifax", region: "NS", countryCode: "CA" },
   { storeId: "559", city: "Quebec City", region: "QC", countryCode: "CA" },
   { storeId: "659", city: "Toronto Downtown", region: "ON", countryCode: "CA" },
+  { storeId: "1340", city: "London", region: "ON", countryCode: "CA" },
   // ── Norway ───────────────────────────────────────────────────────────────────
   // Full-size stores only. All probed against stock API with item 00263850 — all return 200
   // with a cash-and-carry quantity. City is the metropolitan area the store is known by.

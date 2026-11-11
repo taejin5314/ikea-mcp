@@ -1,25 +1,16 @@
 // Regenerates src/data/store-coordinates.ts from IKEA's public store list for each catalog country.
 // Usage: node scripts/update-store-coordinates.mjs
 // Only stores already in src/data/stores.ts get a coordinate; the catalog itself is not changed.
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { FEEDS, fetchFeed, readCatalog, root } from "./feeds.mjs";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const FEEDS = { US: "us/en", CA: "ca/en", NO: "no/no" };
-
-const catalog = [...readFileSync(join(root, "src/data/stores.ts"), "utf8").matchAll(/\{ storeId: "(\d+)"[^}]*?countryCode: "(\w+)" \}/g)].map(
-  (m) => ({ storeId: m[1], countryCode: m[2] })
-);
-if (catalog.length === 0) throw new Error("no store records found in src/data/stores.ts");
+const catalog = readCatalog();
 
 const lines = [];
 const missing = [];
-for (const [countryCode, locale] of Object.entries(FEEDS)) {
-  const url = `https://www.ikea.com/${locale}/meta-data/informera/stores-detailed.json`;
-  const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" } });
-  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  const byId = new Map((await res.json()).map((s) => [String(s.id), s]));
+for (const countryCode of Object.keys(FEEDS)) {
+  const byId = new Map((await fetchFeed(countryCode)).map((s) => [String(s.id), s]));
   for (const store of catalog.filter((s) => s.countryCode === countryCode)) {
     const feed = byId.get(store.storeId);
     const lat = Number(feed?.lat), lon = Number(feed?.lng);
