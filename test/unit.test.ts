@@ -11,6 +11,10 @@ import { findBestStoreForCartTool } from "../src/tools/find_best_store_for_cart.
 import { searchProductsTool } from "../src/tools/search_products.js";
 import { getProductDetailsTool } from "../src/tools/get_product_details.js";
 import { checkCartAvailabilityTool } from "../src/tools/check_cart_availability.js";
+import { callTool, listTools } from "../src/server.js";
+import { toToolError } from "../src/utils/errors.js";
+import { fetchJson, REQUEST_TIMEOUT_MS } from "../src/utils/http.js";
+import { ZodError } from "zod";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -934,5 +938,78 @@ test("tool schemas — search tools document the langCode default and no longer 
     assert.equal(props.langCode.default, undefined, `${tool.name} langCode default`);
     assert.match(props.langCode.description ?? "", /no for NO/, `${tool.name} langCode description`);
     assert.equal(props.countryCode.default, "US", `${tool.name} countryCode default`);
+  }
+});
+
+// ── Tool errors, annotations, request timeout ────────────────────────────────
+
+test("callTool returns invalid input as a tool error that names the field", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response("{}"));
+  try {
+    const result = (await callTool("search_products", {})) as { isError?: boolean; content: { text: string }[] };
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^Invalid input for search_products: query: /);
+    assert.equal(fetchMock.mock.callCount(), 0, "invalid input must not reach the IKEA API");
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("callTool returns an upstream failure as a tool error, not a thrown exception", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response("nope", { status: 403, statusText: "Forbidden" }));
+  try {
+    const result = (await callTool("search_products", { query: "billy" })) as { isError?: boolean; content: { text: string }[] };
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^search_products failed: HTTP 403 Forbidden/);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("callTool rejects an unknown tool name as a protocol error", async () => {
+  await assert.rejects(() => callTool("no_such_tool", {}), /Unknown tool: no_such_tool/);
+});
+
+test("toToolError reports a timeout without leaking the request URL", () => {
+  const timeout = Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+  const result = toToolError("check_store_stock", timeout);
+  assert.equal(result.isError, true);
+  assert.equal(result.content[0].text, "check_store_stock failed: the IKEA API did not answer in time. Try again shortly.");
+});
+
+test("toToolError lists every invalid field of a zod error", () => {
+  const err = new ZodError([
+    { code: "custom", path: ["items", 0, "itemNo"], message: "bad item number" },
+    { code: "custom", path: [], message: "storeIds or countryCode is required" },
+  ]);
+  assert.equal(
+    toToolError("find_best_store_for_cart", err).content[0].text,
+    "Invalid input for find_best_store_for_cart: items.0.itemNo: bad item number; input: storeIds or countryCode is required. Fix the arguments and call the tool again."
+  );
+});
+
+test("every listed tool is annotated read-only with a title; only list_stores is closed-world", () => {
+  const listed = listTools();
+  assert.equal(listed.length, 9);
+  for (const tool of listed) {
+    assert.ok(tool.annotations.title, `${tool.name} has a title`);
+    assert.equal(tool.annotations.readOnlyHint, true, tool.name);
+    assert.equal(tool.annotations.destructiveHint, false, tool.name);
+    assert.equal(tool.annotations.openWorldHint, tool.name !== "list_stores", tool.name);
+  }
+});
+
+test("fetchJson gives every request a timeout signal", async () => {
+  let signal: AbortSignal | undefined;
+  const fetchMock = mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+    signal = init?.signal ?? undefined;
+    return new Response("{}");
+  });
+  try {
+    await fetchJson("https://example.invalid/x");
+    assert.ok(signal instanceof AbortSignal, "fetch was called with an AbortSignal");
+    assert.equal(REQUEST_TIMEOUT_MS, 10_000);
+  } finally {
+    fetchMock.mock.restore();
   }
 });
