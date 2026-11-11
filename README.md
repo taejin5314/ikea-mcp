@@ -4,7 +4,7 @@
 [![node](https://img.shields.io/node/v/ikea-mcp)](package.json)
 [![license](https://img.shields.io/npm/l/ikea-mcp)](LICENSE)
 
-An MCP server that lets an AI assistant search IKEA products and check live in-store stock in the US and Canada.
+An MCP server that lets an AI assistant search IKEA products and check live in-store stock in the US, Canada and Norway.
 Ask "which store near me has everything on this list?" and the assistant answers from IKEA's own stock data.
 
 Read-only, no account or API key needed, runs with one `npx` command.
@@ -104,8 +104,9 @@ call took under 400 ms, including the one that asks all 15 Canadian stores.
   optional `x-api-key` auth on `/mcp` and an open `/health` endpoint.
 - **Fan-out with limits.** A country-wide query asks every store in parallel, capped at 10 concurrent requests,
   with one retry on 5xx, 429 or network errors and `Retry-After` respected.
-- **Errors that mean something.** A 404 is "not stocked here" and a 405 is "not a valid store"; both come back as
-  data on the row instead of failing the whole call, so an assistant can explain a partial answer.
+- **Errors that mean something.** A 404 is "not stocked here", a 405 is "not a valid store" and `inRange: false`
+  is "not sold in this market"; each comes back as data on the row instead of failing the whole call, so an
+  assistant can explain a partial answer.
 - **Forgiving input.** Item numbers are accepted as `20522046`, `005.221.32` or `5-221-32` and normalised.
 - **Small surface.** Two runtime dependencies (the MCP SDK and zod), inputs validated with zod schemas, unit tests
   on the logic and smoke tests over both transports against the live API.
@@ -113,9 +114,10 @@ call took under 400 ms, including the one that asks all 15 Canadian stores.
 ## Limitations
 
 - Uses unofficial public IKEA APIs: no SLA, and it may break without notice.
-- US and Canada only. Canada coverage is complete (15 stores). US coverage is about 52 stores; four small-format
-  stores have unknown API IDs (Queens, Alpharetta, Indianapolis, Arlington), and the San Francisco small-format
-  store is excluded because its known ID returns 405.
+- US, Canada and Norway only. Canada coverage is complete (15 stores). Norway coverage is the 7 full-size stores;
+  planning studios and the Oslo city-centre store are excluded because they have no cash-and-carry stock. US
+  coverage is 52 stores; four small-format stores have unknown API IDs (Queens, Alpharetta, Indianapolis,
+  Arlington), and the San Francisco small-format store is excluded because its known ID returns 405.
 - Cash-and-carry availability only: click-and-collect and home delivery are not exposed.
 - Read-only: no cart, order or account operations.
 - `size` in `search_products` is capped by IKEA's API (observed maximum about 24 per page; `total` is the full
@@ -134,7 +136,7 @@ Search IKEA products by keyword.
 |---|---|---|---|
 | `query` | string | — | yes |
 | `countryCode` | string | `"US"` | no |
-| `langCode` | string | `"en"` | no |
+| `langCode` | string | country default: `"en"` for US/CA, `"no"` for NO | no |
 | `size` | number | `10` | no |
 
 **Output**
@@ -166,7 +168,7 @@ Get details for a single IKEA product by item number.
 |---|---|---|---|
 | `itemNo` | string | — | yes |
 | `countryCode` | string | `"US"` | no |
-| `langCode` | string | `"en"` | no |
+| `langCode` | string | country default: `"en"` for US/CA, `"no"` for NO | no |
 
 **Output**
 ```json
@@ -203,9 +205,10 @@ Check stock at a single IKEA store.
 {
   "storeId": "399",
   "availableForCashCarry": true,
+  "inRange": true,
   "quantity": 110,
   "messageType": "HIGH_IN_STOCK",
-  "errors": null
+  "errors": []
 }
 ```
 
@@ -214,11 +217,14 @@ On error (e.g. item not carried):
 {
   "storeId": "026",
   "availableForCashCarry": false,
+  "inRange": null,
   "quantity": null,
   "messageType": null,
   "errors": [{ "code": 404, "message": "Not found", "meaning": "item not stocked at this store" }]
 }
 ```
+
+`inRange: false` with an empty `errors` array means the item is not sold at that store or in that country's market (for example a US item number checked against a Norwegian store). Search with the matching `countryCode` to get a local item number.
 
 ---
 
@@ -231,7 +237,7 @@ Compare stock for one item across multiple stores. Provide explicit `storeIds`, 
 |---|---|---|---|
 | `itemNo` | string | — | yes |
 | `storeIds` | string[] (min 2) | — | one of `storeIds`/`countryCode` |
-| `countryCode` | `"US"` \| `"CA"` | — | one of `storeIds`/`countryCode` |
+| `countryCode` | `"US"` \| `"CA"` \| `"NO"` | — | one of `storeIds`/`countryCode` |
 | `sortBy` | `"quantity"` \| `"storeId"` | — | no |
 
 `storeIds` takes precedence — if both are provided, `countryCode` only sets the IKEA API locale.
@@ -270,6 +276,7 @@ Check cash-and-carry stock for multiple items at a single store in one call.
     "storeId": "399",
     "storeLabel": "399 (Burbank, CA)",
     "availableForCashCarry": true,
+    "inRange": true,
     "quantity": 104,
     "messageType": "HIGH_IN_STOCK",
     "errors": []
@@ -291,10 +298,10 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 | `itemNo` | string | — | yes |
 | `storeIds` | string[] | all known stores | no |
 | `maxResults` | number | `3` (max 50) | no |
-| `countryCode` | `"US"` \| `"CA"` | — | no |
+| `countryCode` | `"US"` \| `"CA"` \| `"NO"` | — | no |
 | `minQuantity` | number (int ≥ 1) | — | no |
 
-`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all ~65 known stores. `minQuantity` excludes stores with quantity below the threshold.
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 74 known stores. `minQuantity` excludes stores with quantity below the threshold.
 
 **Output** — array of matching stores, up to `maxResults`:
 ```json
@@ -309,7 +316,7 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 ]
 ```
 
-Returns `[]` if no store has the item in stock. "All known stores" means the ~65 US and Canada entries in `src/data/stores.ts`.
+Returns `[]` if no store has the item in stock. "All known stores" means the 74 US, Canada and Norway entries in `src/data/stores.ts`.
 
 **Note on failures:** stores that return a store-level error (405 invalid store ID) are silently excluded from results rather than appearing as rows. Use `compare_store_stock` with the same `storeIds` to inspect per-store `errors` directly.
 
@@ -338,6 +345,7 @@ Check whether all items in a shopping list are available in sufficient quantity 
       "itemNo": "20522046",
       "quantity": 2,
       "inStock": 42,
+      "inRange": true,
       "sufficient": true,
       "eligibleForStockNotification": false,
       "errors": []
@@ -361,10 +369,10 @@ Find the best store to buy multiple items in one trip. Ranks stores by how many 
 | `items[].itemNo` | string | — | yes |
 | `items[].quantity` | number | `1` | no |
 | `storeIds` | string[] | — | no |
-| `countryCode` | `"US"` \| `"CA"` | — | no |
+| `countryCode` | `"US"` \| `"CA"` \| `"NO"` | — | no |
 | `maxResults` | number | `3` (max 50) | no |
 
-`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all ~65 known stores.
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 74 known stores.
 
 **Output** — array of stores ranked by cart fulfillment, up to `maxResults`:
 ```json
@@ -428,7 +436,7 @@ Returns one entry per item in the same order — items not stocked appear with `
 }
 ```
 
-Returns the top 3 stores by in-stock quantity across the mixed US/Canada subset. Omit `storeIds` to search all ~65 known stores.
+Returns the top 3 stores by in-stock quantity across the mixed US/Canada subset. Omit `storeIds` to search all 74 known stores.
 
 ### 4. Best store for a shopping list
 
@@ -449,6 +457,16 @@ Find which store can fulfill the most items from a multi-item cart:
 
 Returns the top 3 Canada stores ranked by how many items they can fully supply. Use `check_cart_availability` to then verify exact quantities at the chosen store.
 
+### 5. Norway: search in Norwegian, then compare every Norwegian store
+
+```
+1. search_products       { "query": "billy bokhylle", "countryCode": "NO" }
+   → Norwegian names and NOK prices; langCode defaults to "no"
+
+2. compare_store_stock   { "itemNo": "00263850", "countryCode": "NO" }
+   → one row per Norwegian store, labelled like "095 (Furuset, Oslo, NO)"
+```
+
 ---
 
 ## Build and test
@@ -461,7 +479,7 @@ npm test             # unit tests
 node smoke.mjs       # end-to-end stdio smoke test
 ```
 
-`smoke.mjs` drives the built server over stdio against the live IKEA API and prints pass/fail lines to stdout; `smoke-http.mjs` does the same over HTTP.
+`smoke.mjs` (`npm run smoke`) drives the built server over stdio against the live IKEA API, including five Norway steps, and prints pass/fail lines to stdout; `smoke-http.mjs` does the same over HTTP.
 
 ## Transports
 
@@ -547,12 +565,14 @@ The `Accept: application/json, text/event-stream` header is required by the MCP 
 
 ## Store IDs
 
-Store metadata (ID → city label) lives in `src/data/stores.ts`. ~50 US stores confirmed from `ikea.com/us/en/stores/` pages; 15 Canada stores confirmed from `ikea.com/ca/en/stores/` pages (all probed against the stock API).
+Store metadata (ID → city label) lives in `src/data/stores.ts`. 52 US stores confirmed from `ikea.com/us/en/stores/` pages; 15 Canada stores confirmed from `ikea.com/ca/en/stores/` pages (all probed against the stock API). 7 Norway stores confirmed from `ikea.com/no/no/stores/` pages (store code in the page's embedded business-unit JSON), all probed against the stock API.
 
 Confirmed compatible `storeId` formats:
 - Standard 3-digit: `"399"` (Burbank, CA, US), `"216"` (Calgary, AB, CA)
 - Leading-zero 3-digit: `"026"` (Canton, MI, US), `"039"` (Montreal, QC, CA)
 - 4-digit: `"921"` (Brooklyn, NY, US), `"1129"` (Syracuse, NY, US)
+
+Norwegian IDs use the same 3-digit formats, e.g. `"095"` (Furuset, Oslo, NO) and the leading-zero `"007"` (Sørlandet, Kristiansand, NO).
 
 An invalid or unsupported `storeId` returns a 405 error in the `errors` array.
 
@@ -569,12 +589,15 @@ An invalid or unsupported `storeId` returns a 405 error in the `errors` array.
 
 6- and 7-digit inputs are left-padded to 8 digits. 8- and 9-digit inputs are kept as-is. Values outside 6–9 digits after stripping are rejected.
 
+Item numbers are per market. An item found with `countryCode: "US"` may not exist in the Norwegian range; stock tools then return `inRange: false`. Search with the country you intend to shop in.
+
 ## Supported countries
 
 | Country | Code | Store count |
 |---|---|---|
-| United States | `US` | ~52 |
-| Canada | `CA` | ~15 |
+| United States | `US` | 52 |
+| Canada | `CA` | 15 |
+| Norway | `NO` | 7 |
 
 Use `list_stores` to get the current catalog. Some store IDs in the catalog are unverified — they are listed but may return 405 from the stock API.
 
@@ -591,6 +614,7 @@ Use `list_stores` to get the current catalog. Some store IDs in the catalog are 
 |---|---|
 | `405` in `errors` | Invalid `storeId` — use `list_stores` to find valid IDs |
 | `404` in `errors` | Item not stocked at that store |
+| `inRange: false`, empty `errors` | Item not sold at that store or in that market — search with the matching `countryCode` |
 | Empty `find_best_store_for_item` result | No store has the item in stock, or `minQuantity` is too high |
 | Slow `countryCode` query | Normal — fan-out to all country stores (capped at 10 concurrent) |
 | `itemNo` validation error | Input must resolve to 6–9 digits; see Item numbers above |

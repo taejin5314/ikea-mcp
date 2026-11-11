@@ -1,7 +1,16 @@
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
-import { storeIdsByCountry, STORE_LABELS } from "../src/data/stores.js";
+import { storeIdsByCountry, STORE_LABELS, STORES, storeLabel, storeLabelFor, storeCountry, allStoreIds } from "../src/data/stores.js";
+import { readFileSync } from "node:fs";
+import { COUNTRY_CODES, DEFAULT_LANG_CODE, defaultLangCode, isCountryCode } from "../src/data/countries.js";
+import { listStoresTool } from "../src/tools/list_stores.js";
+import { compareStoreStockTool } from "../src/tools/compare_store_stock.js";
+import { findBestStoreForItemTool } from "../src/tools/find_best_store_for_item.js";
+import { findBestStoreForCartTool } from "../src/tools/find_best_store_for_cart.js";
+import { searchProductsTool } from "../src/tools/search_products.js";
+import { getProductDetailsTool } from "../src/tools/get_product_details.js";
+import { checkCartAvailabilityTool } from "../src/tools/check_cart_availability.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -38,6 +47,7 @@ test("projectStock — stocked item returns correct shape", () => {
   const result = projectStock(makeStockResponse());
   assert.deepEqual(result, {
     availableForCashCarry: true,
+    inRange: null,
     quantity: 42,
     messageType: "HIGH_IN_STOCK",
     eligibleForStockNotification: false,
@@ -361,7 +371,7 @@ test("projectMultiItemStock — invalid store (405) all items get store error", 
 
 // ── compareStoreStock input resolution ───────────────────────────────────────
 
-import { CompareStoreStockInput, CheckCartAvailabilityInput, FindBestStoreForCartInput, ListStoresInput, CheckMultiItemStockInput, FindBestStoreInput } from "../src/schemas/index.js";
+import { CompareStoreStockInput, CheckCartAvailabilityInput, FindBestStoreForCartInput, ListStoresInput, CheckMultiItemStockInput, FindBestStoreInput, SearchProductsInput, GetProductDetailsInput } from "../src/schemas/index.js";
 
 test("compareStoreStock — storeIds provided, no countryCode: uses storeIds", () => {
   const input = CompareStoreStockInput.parse({ itemNo: "20522046", storeIds: ["399", "026"] });
@@ -405,27 +415,29 @@ test("compareStoreStock — storeIds takes precedence over countryCode", () => {
 
 test("storeIdsByCountry — CA returns only CA stores", () => {
   const ids = storeIdsByCountry("CA");
-  assert.ok(ids.length > 0);
-  ids.forEach((id) => {
-    assert.match(STORE_LABELS[id], /,\s+[A-Z]{2},\s+CA\)$/, `expected CA label for ${id}: ${STORE_LABELS[id]}`);
-  });
+  assert.equal(ids.length, 15);
+  ids.forEach((id) => assert.equal(storeCountry(id), "CA"));
 });
 
-test("storeIdsByCountry — US returns only non-CA stores", () => {
+test("storeIdsByCountry — US returns only US stores", () => {
   const ids = storeIdsByCountry("US");
-  assert.ok(ids.length > 0);
-  ids.forEach((id) => {
-    assert.doesNotMatch(STORE_LABELS[id], /,\s+[A-Z]{2},\s+CA\)$/, `unexpected CA label for ${id}: ${STORE_LABELS[id]}`);
-  });
+  assert.equal(ids.length, 52);
+  ids.forEach((id) => assert.equal(storeCountry(id), "US"));
 });
 
-test("storeIdsByCountry — US and CA partition all stores exactly", () => {
+test("storeIdsByCountry — NO returns exactly the seven Norwegian stores", () => {
+  assert.deepEqual(storeIdsByCountry("NO"), ["007", "091", "095", "126", "371", "390", "441"]);
+});
+
+test("storeIdsByCountry — US, CA and NO partition all stores exactly", () => {
   const us = storeIdsByCountry("US");
   const ca = storeIdsByCountry("CA");
-  const all = Object.keys(STORE_LABELS);
-  assert.equal(us.length + ca.length, all.length);
-  const combined = new Set([...us, ...ca]);
-  assert.equal(combined.size, all.length);
+  const no = storeIdsByCountry("NO");
+  const all = allStoreIds();
+  assert.equal(us.length + ca.length + no.length, all.length);
+  assert.equal(new Set([...us, ...ca, ...no]).size, all.length);
+  assert.equal(all.length, 74);
+  assert.equal(Object.keys(STORE_LABELS).length, 74);
 });
 
 test("storeIdsByCountry — known CA store 149 is in CA set", () => {
@@ -483,7 +495,7 @@ function projectCart(
     if (storeError) return { itemNo: item.itemNo, inStock: null, sufficient: false };
     const a = byItemNo.get(item.itemNo);
     if (a) {
-      const inStock = a.buyingOption.cashCarry.availability.quantity;
+      const inStock = a.buyingOption.cashCarry.availability!.quantity; // makeAvailability always sets it
       return { itemNo: item.itemNo, inStock, sufficient: inStock >= item.quantity };
     }
     return { itemNo: item.itemNo, inStock: null, sufficient: false };
@@ -693,3 +705,234 @@ if (process.env.CANARY) {
     }
   });
 }
+
+// ── countries ─────────────────────────────────────────────────────────────────
+
+test("countries — COUNTRY_CODES lists US, CA and NO in that order", () => {
+  assert.deepEqual([...COUNTRY_CODES], ["US", "CA", "NO"]);
+});
+
+test("countries — every country has a default language", () => {
+  for (const cc of COUNTRY_CODES) {
+    assert.equal(typeof DEFAULT_LANG_CODE[cc], "string");
+  }
+  assert.equal(DEFAULT_LANG_CODE.NO, "no");
+  assert.equal(DEFAULT_LANG_CODE.US, "en");
+  assert.equal(DEFAULT_LANG_CODE.CA, "en");
+});
+
+test("countries — defaultLangCode falls back to en for unknown countries", () => {
+  assert.equal(defaultLangCode("NO"), "no");
+  assert.equal(defaultLangCode("US"), "en");
+  assert.equal(defaultLangCode("SE"), "en");
+  assert.equal(defaultLangCode(""), "en");
+});
+
+test("countries — isCountryCode is a type guard over COUNTRY_CODES", () => {
+  assert.equal(isCountryCode("NO"), true);
+  assert.equal(isCountryCode("no"), false);
+  assert.equal(isCountryCode("SE"), false);
+});
+
+// ── store catalog labels ──────────────────────────────────────────────────────
+
+test("stores — US and CA labels are byte-identical to the v1.6.2 catalog", () => {
+  const expected = JSON.parse(
+    readFileSync(new URL("./fixtures/store-labels-v1.6.2.json", import.meta.url), "utf8")
+  ) as Record<string, string>;
+  const actual: Record<string, string> = {};
+  for (const s of STORES) {
+    if (s.countryCode !== "NO") actual[s.storeId] = storeLabelFor(s);
+  }
+  assert.deepEqual(actual, expected);
+  assert.equal(Object.keys(expected).length, 67);
+});
+
+test("stores — Norwegian labels use name, city and NO", () => {
+  assert.equal(storeLabel("095"), "095 (Furuset, Oslo, NO)");
+  assert.equal(storeLabel("007"), "007 (Sørlandet, Kristiansand, NO)");
+  assert.equal(storeLabel("441"), "441 (Åsane, Bergen, NO)");
+  assert.equal(STORE_LABELS["390"], "390 (Ringsaker, Hamar, NO)");
+});
+
+test("stores — storeLabel and storeCountry are undefined for unknown IDs", () => {
+  assert.equal(storeLabel("999"), undefined);
+  assert.equal(storeCountry("999"), undefined);
+  assert.equal(storeCountry("095"), "NO");
+  assert.equal(storeCountry("399"), "US");
+  assert.equal(storeCountry("149"), "CA");
+});
+
+test("stores — no duplicate store IDs", () => {
+  const ids = allStoreIds();
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+// ── country enum and langCode defaults ────────────────────────────────────────
+
+test("ListStoresInput — accepts lowercase no and normalises to NO", () => {
+  assert.equal(ListStoresInput.parse({ countryCode: "no" }).countryCode, "NO");
+  assert.equal(ListStoresInput.parse({ countryCode: "CA" }).countryCode, "CA");
+});
+
+test("ListStoresInput — rejects countries outside the catalog", () => {
+  assert.throws(() => ListStoresInput.parse({ countryCode: "SE" }));
+});
+
+test("CompareStoreStockInput — countryCode NO is accepted", () => {
+  const input = CompareStoreStockInput.parse({ itemNo: "00263850", countryCode: "no" });
+  assert.equal(input.countryCode, "NO");
+  assert.equal(input.storeIds, undefined);
+});
+
+test("SearchProductsInput — langCode defaults to the country's language", () => {
+  assert.equal(SearchProductsInput.parse({ query: "billy", countryCode: "NO" }).langCode, "no");
+  assert.equal(SearchProductsInput.parse({ query: "billy", countryCode: "no" }).langCode, "no");
+  assert.equal(SearchProductsInput.parse({ query: "billy", countryCode: "CA" }).langCode, "en");
+  assert.equal(SearchProductsInput.parse({ query: "billy" }).langCode, "en");
+  assert.equal(SearchProductsInput.parse({ query: "billy", countryCode: "SE" }).langCode, "en");
+});
+
+test("SearchProductsInput — explicit langCode wins over the country default", () => {
+  const input = SearchProductsInput.parse({ query: "billy", countryCode: "NO", langCode: "en" });
+  assert.equal(input.langCode, "en");
+  assert.equal(input.countryCode, "NO");
+  assert.equal(input.size, 10);
+});
+
+test("GetProductDetailsInput — langCode defaults to the country's language", () => {
+  assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850", countryCode: "NO" }).langCode, "no");
+  assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850" }).langCode, "en");
+  assert.equal(GetProductDetailsInput.parse({ itemNo: "00263850", countryCode: "NO", langCode: "en" }).langCode, "en");
+});
+
+// ── inRange ───────────────────────────────────────────────────────────────────
+
+function withRange(inRange: boolean, quantity?: number): StockResponse {
+  const base = makeStockResponse();
+  const a = base.availabilities![0];
+  const cashCarry: typeof a.buyingOption.cashCarry = {
+    ...a.buyingOption.cashCarry,
+    range: { inRange },
+  };
+  if (quantity === undefined) {
+    // Not in range: the API omits availability entirely.
+    delete cashCarry.availability;
+  } else {
+    cashCarry.availability = { ...a.buyingOption.cashCarry.availability!, quantity };
+  }
+  return {
+    ...base,
+    availabilities: [{ ...a, availableForCashCarry: inRange, buyingOption: { ...a.buyingOption, cashCarry } }],
+  };
+}
+
+test("projectStock — inRange false with no quantity means item not sold here", () => {
+  const result = projectStock(withRange(false));
+  assert.equal(result.inRange, false);
+  assert.equal(result.quantity, null);
+  assert.equal(result.availableForCashCarry, false);
+  assert.deepEqual(result.errors, []);
+});
+
+test("projectStock — inRange true passes through with quantity", () => {
+  const result = projectStock(withRange(true, 7));
+  assert.equal(result.inRange, true);
+  assert.equal(result.quantity, 7);
+});
+
+test("projectStock — inRange is null when the API omits range", () => {
+  assert.equal(projectStock(makeStockResponse()).inRange, null);
+  assert.equal(projectStock(makeStockResponse({ availabilities: [] })).inRange, null);
+});
+
+test("projectMultiItemStock — inRange per row, null on 405 and not-found", () => {
+  const stocked = projectMultiItemStock(
+    { availabilities: [makeAvailability("20522046", 3)], timestamp: "t" },
+    ["20522046", "99999999"]
+  );
+  assert.equal(stocked[0].inRange, null); // makeAvailability has no range
+  assert.equal(stocked[1].inRange, null);
+  assert.equal(stocked[1].errors[0].code, 404);
+
+  const storeError = projectMultiItemStock(
+    { availabilities: null, errors: [{ code: 405, message: "Store not found" }], timestamp: "t" },
+    ["20522046"]
+  );
+  assert.equal(storeError[0].inRange, null);
+
+  const inRange = projectMultiItemStock(withRange(true, 7), ["20522046"]);
+  assert.equal(inRange[0].inRange, true);
+  const notInRange = projectMultiItemStock(withRange(false), ["20522046"]);
+  assert.equal(notInRange[0].inRange, false);
+  assert.equal(notInRange[0].quantity, null);
+});
+
+test("check_cart_availability — item outside the store's range is insufficient, not a crash", async () => {
+  const body = withRange(false);
+  const fetchMock = mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })
+  );
+  try {
+    const res = await checkCartAvailabilityTool.handler({ storeId: "095", items: [{ itemNo: "20522046", quantity: 1 }] });
+    const out = JSON.parse(res.content[0].text) as {
+      allSufficient: boolean;
+      items: { inStock: number | null; sufficient: boolean; inRange: boolean | null; errors: unknown[] }[];
+    };
+    assert.equal(out.allSufficient, false);
+    assert.equal(out.items[0].inStock, null);
+    assert.equal(out.items[0].sufficient, false);
+    assert.equal(out.items[0].inRange, false);
+    assert.deepEqual(out.items[0].errors, []);
+    assert.equal(fetchMock.mock.callCount(), 1);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+// ── list_stores handler and tool schemas ──────────────────────────────────────
+
+async function listStores(args: Record<string, unknown>) {
+  const res = await listStoresTool.handler(args);
+  return JSON.parse(res.content[0].text) as { stores: { storeId: string; storeLabel: string; countryCode: string }[] };
+}
+
+test("list_stores — countryCode NO returns the seven Norwegian stores", async () => {
+  const { stores } = await listStores({ countryCode: "NO" });
+  assert.deepEqual(stores.map((s) => s.storeId), ["007", "091", "095", "126", "371", "390", "441"]);
+  assert.ok(stores.every((s) => s.countryCode === "NO"));
+  assert.equal(stores[2].storeLabel, "095 (Furuset, Oslo, NO)");
+});
+
+test("list_stores — no filter returns all 74 stores with correct country tags", async () => {
+  const { stores } = await listStores({});
+  assert.equal(stores.length, 74);
+  assert.equal(stores.filter((s) => s.countryCode === "US").length, 52);
+  assert.equal(stores.filter((s) => s.countryCode === "CA").length, 15);
+  assert.equal(stores.filter((s) => s.countryCode === "NO").length, 7);
+  assert.equal(stores.find((s) => s.storeId === "149")?.countryCode, "CA");
+  assert.equal(stores.find((s) => s.storeId === "399")?.countryCode, "US");
+});
+
+test("list_stores — countryCode CA still returns 15 stores", async () => {
+  const { stores } = await listStores({ countryCode: "ca" });
+  assert.equal(stores.length, 15);
+  assert.ok(stores.every((s) => s.countryCode === "CA"));
+});
+
+test("tool schemas — every countryCode enum lists US, CA and NO", () => {
+  for (const tool of [listStoresTool, compareStoreStockTool, findBestStoreForItemTool, findBestStoreForCartTool]) {
+    const prop = (tool.inputSchema.properties as unknown as Record<string, { enum?: string[] }>).countryCode;
+    assert.deepEqual(prop.enum, ["US", "CA", "NO"], `${tool.name} countryCode enum`);
+    assert.match(tool.description, /'US', 'CA' or 'NO'/, `${tool.name} description`);
+  }
+});
+
+test("tool schemas — search tools document the langCode default and no longer hardcode en", () => {
+  for (const tool of [searchProductsTool, getProductDetailsTool]) {
+    const props = tool.inputSchema.properties as unknown as Record<string, { default?: unknown; description?: string }>;
+    assert.equal(props.langCode.default, undefined, `${tool.name} langCode default`);
+    assert.match(props.langCode.description ?? "", /no for NO/, `${tool.name} langCode description`);
+    assert.equal(props.countryCode.default, "US", `${tool.name} countryCode default`);
+  }
+});

@@ -186,6 +186,62 @@ try {
     const shapeOk2 = Array.isArray(d) && d.every((r) => typeof r.storeId === "string" && typeof r.storeLabel === "string" && (r.quantity === null || typeof r.quantity === "number"));
     console.log(`find_best_store_for_item[countryCode=CA] ${shapeOk2 ? "OK" : "SHAPE_MISMATCH"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
   }
+
+  // ── Norway ──────────────────────────────────────────────────────────────────
+  // search_products — countryCode NO, langCode defaults to "no", prices in NOK
+  send({ jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "search_products", arguments: { query: "billy", countryCode: "NO", size: 1 } } });
+  const spNO = await readNext(15000);
+  if (spNO.error) {
+    console.log("search_products[NO] FAIL:", JSON.stringify(spNO.error));
+  } else {
+    const d = JSON.parse(spNO.result.content[0].text);
+    const item = d.items?.[0];
+    const ok = item?.salesPrice?.currencyCode === "NOK" && String(item?.pipUrl).includes("/no/no/");
+    console.log(`search_products[NO] ${ok ? "OK" : "LOCALE_MISMATCH"} — name: ${item?.name} ${item?.typeName} price: ${item?.salesPrice?.amount} ${item?.salesPrice?.currencyCode}`);
+  }
+
+  // check_store_stock — Norwegian store 095 Furuset, Norwegian BILLY item
+  send({ jsonrpc: "2.0", id: 17, method: "tools/call", params: { name: "check_store_stock", arguments: { itemNo: "00263850", storeId: "095" } } });
+  const csNO = await readNext(10000);
+  if (csNO.error) {
+    console.log("check_store_stock[095/NO] FAIL:", JSON.stringify(csNO.error));
+  } else {
+    const d = JSON.parse(csNO.result.content[0].text);
+    const ok = String(d.storeLabel).endsWith("NO)") && d.inRange === true;
+    console.log(`check_store_stock[095/NO] ${ok ? "OK" : "MISMATCH"} — label: ${d.storeLabel} qty: ${d.quantity} inRange: ${d.inRange} status: ${d.messageType}`);
+  }
+
+  // check_store_stock — US-only item at a Norwegian store → inRange false, no error
+  send({ jsonrpc: "2.0", id: 18, method: "tools/call", params: { name: "check_store_stock", arguments: { itemNo: "20522046", storeId: "095" } } });
+  const csNotInRange = await readNext(10000);
+  if (csNotInRange.error) {
+    console.log("check_store_stock[095/not-in-range] FAIL:", JSON.stringify(csNotInRange.error));
+  } else {
+    const d = JSON.parse(csNotInRange.result.content[0].text);
+    const ok = d.inRange === false && d.quantity === null && Array.isArray(d.errors) && d.errors.length === 0;
+    console.log(`check_store_stock[095/not-in-range] ${ok ? "OK" : "MISMATCH"} — inRange: ${d.inRange} qty: ${d.quantity} errors: ${d.errors?.length}`);
+  }
+
+  // compare_store_stock — countryCode NO (no storeIds) → seven Norwegian rows
+  send({ jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "compare_store_stock", arguments: { itemNo: "00263850", countryCode: "NO" } } });
+  const cmpNO = await readNext(30000);
+  if (cmpNO.error) {
+    console.log("compare_store_stock[countryCode=NO] FAIL:", JSON.stringify(cmpNO.error));
+  } else {
+    const d = JSON.parse(cmpNO.result.content[0].text);
+    const ok = d.length === 7 && d.every((r) => String(r.storeLabel).endsWith("NO)"));
+    console.log(`compare_store_stock[countryCode=NO] ${ok ? "OK" : "MISMATCH"} — ${d.length} store(s): ${d.map((r) => `${r.storeId}(${r.quantity})`).join(", ")}`);
+  }
+
+  // list_stores — countryCode NO
+  send({ jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "list_stores", arguments: { countryCode: "NO" } } });
+  const lsNO = await readNext(10000);
+  if (lsNO.error) {
+    console.log("list_stores[NO] FAIL:", JSON.stringify(lsNO.error));
+  } else {
+    const d = JSON.parse(lsNO.result.content[0].text);
+    console.log(`list_stores[NO] ${d.stores?.length === 7 ? "OK" : "MISMATCH"} — ${d.stores?.length} store(s)`);
+  }
 } catch (e) {
   console.error("ERROR:", e.message);
 } finally {

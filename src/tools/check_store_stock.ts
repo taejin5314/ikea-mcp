@@ -4,13 +4,13 @@ import { storeLabel } from "../data/stores.js";
 
 export const checkStoreStockTool = {
   name: "check_store_stock",
-  description: "Check stock availability for an item at a specific IKEA store.",
+  description: "Check cash-and-carry stock availability for an item at a specific IKEA store. inRange: false means the item is not sold at that store or in that country's market; null means the upstream response carried no range information.",
   inputSchema: {
     type: "object",
     properties: {
       itemNo: { type: "string" },
       storeId: { type: "string" },
-      countryCode: { type: "string", default: "us" },
+      countryCode: { type: "string", default: "US" },
     },
     required: ["itemNo", "storeId"],
   },

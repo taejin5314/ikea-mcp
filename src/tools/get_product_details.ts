@@ -8,8 +8,8 @@ export const getProductDetailsTool = {
     type: "object",
     properties: {
       itemNo: { type: "string" },
-      countryCode: { type: "string", default: "us" },
-      langCode: { type: "string", default: "en" },
+      countryCode: { type: "string", default: "US", description: "Two-letter country code of the IKEA market to price and localise the product in, e.g. US, CA, NO." },
+      langCode: { type: "string", description: "Two-letter language code. Defaults to the country's language: en for US and CA, no for NO." },
     },
     required: ["itemNo"],
   },
