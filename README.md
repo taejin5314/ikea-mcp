@@ -1,34 +1,129 @@
 # ikea-mcp
 
-Read-only MCP server for IKEA product search and in-store stock lookup.
+[![npm](https://img.shields.io/npm/v/ikea-mcp)](https://www.npmjs.com/package/ikea-mcp)
+[![node](https://img.shields.io/node/v/ikea-mcp)](package.json)
+[![license](https://img.shields.io/npm/l/ikea-mcp)](LICENSE)
 
-**Transports:** stdio (Claude Desktop / MCP CLI) · Streamable HTTP (remote clients)
-**License:** MIT · **No auth required to run locally**
+An MCP server that lets an AI assistant search IKEA products and check live in-store stock in the US and Canada.
+Ask "which store near me has everything on this list?" and the assistant answers from IKEA's own stock data.
 
-## Capabilities
-| Tool | What it does |
-|---|---|
-| `list_stores` | List known store IDs and labels, optionally filtered by country |
-| `search_products` | Search IKEA products by keyword |
-| `get_product_details` | Get details for a single product by item number |
-| `check_store_stock` | Check cash-and-carry stock at one store |
-| `check_multi_item_stock` | Check stock for multiple items at one store |
-| `compare_store_stock` | Compare stock across explicit stores or a country catalog |
-| `find_best_store_for_item` | Rank stores by in-stock quantity (optionally filter by country) |
-| `check_cart_availability` | Check whether all items in a shopping list are available at one store |
-| `find_best_store_for_cart` | Rank stores by cart fulfillment across multiple items |
+Read-only, no account or API key needed, runs with one `npx` command.
 
-## MVP limitations
-- Uses unofficial public IKEA APIs — no SLA, may break without notice
-- Canada store coverage is complete (15 stores)
-- US coverage is incomplete — 4 small-format stores have unknown API IDs (Queens, Alpharetta, Indianapolis, Arlington)
-- San Francisco small-format store is intentionally excluded (known ID 3136 returns 405)
-- No extra stores are included
-- Cash-and-carry availability only — click-and-collect and home delivery not exposed
-- HTTP transport is open by default — set `API_KEY` env var to require `x-api-key` header on `/mcp`
-- Read-only — no cart, order, or account operations
+## Quick start
+
+Add it to Claude Desktop (`claude_desktop_config.json`), Claude Code (`.mcp.json`) or any MCP client that speaks
+stdio:
+
+```json
+{
+  "mcpServers": {
+    "ikea-mcp": {
+      "command": "npx",
+      "args": ["-y", "ikea-mcp"]
+    }
+  }
+}
+```
+
+Then ask in plain language:
+
+> Find the white BILLY bookcase and tell me which Canadian store has the most in stock.
+
+## What it answers
+
+These are real responses from the published package against the live IKEA API, captured on 11 November 2026. Each
+call took under 400 ms, including the one that asks all 15 Canadian stores.
+
+`search_products` `{ "query": "BILLY bookcase", "countryCode": "CA", "size": 3 }`
+
+```json
+{
+  "total": 120,
+  "items": [
+    {
+      "itemNo": "20522046",
+      "name": "BILLY",
+      "typeName": "Bookcase",
+      "salesPrice": { "amount": 90, "currencyCode": "CAD" },
+      "pipUrl": "https://www.ikea.com/ca/en/p/billy-bookcase-white-20522046/",
+      "ratingValue": 4.5,
+      "ratingCount": 2124
+    }
+  ]
+}
+```
+
+`find_best_store_for_item` `{ "itemNo": "20522046", "countryCode": "CA", "maxResults": 3 }`
+
+```json
+[
+  { "storeId": "003", "storeLabel": "003 (Richmond, BC, CA)", "quantity": 565, "messageType": "HIGH_IN_STOCK" },
+  { "storeId": "372", "storeLabel": "372 (Vaughan, ON, CA)", "quantity": 111, "messageType": "HIGH_IN_STOCK" },
+  { "storeId": "216", "storeLabel": "216 (Calgary, AB, CA)", "quantity": 94, "messageType": "HIGH_IN_STOCK" }
+]
+```
+
+`find_best_store_for_cart` with two BILLY sizes, ranked by how much of the cart each store can fill:
+
+```json
+[
+  {
+    "storeId": "003",
+    "storeLabel": "003 (Richmond, BC, CA)",
+    "allSufficient": true,
+    "fulfilledCount": 2,
+    "totalCount": 2,
+    "items": [
+      { "itemNo": "20522046", "quantity": 2, "inStock": 565, "sufficient": true },
+      { "itemNo": "50522040", "quantity": 1, "inStock": 17, "sufficient": true }
+    ]
+  }
+]
+```
+
+(Output shortened: the first shows one of three items and omits `imageUrl`, the second omits
+`availableForCashCarry`, the third shows one of two stores.)
 
 ## Tools
+
+| Tool                       | What it does                                                           |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `search_products`          | Search IKEA products by keyword                                        |
+| `get_product_details`      | Get details for a single product by item number                        |
+| `list_stores`              | List known store IDs and labels, optionally filtered by country        |
+| `check_store_stock`        | Check cash-and-carry stock at one store                                |
+| `check_multi_item_stock`   | Check stock for multiple items at one store                            |
+| `compare_store_stock`      | Compare stock across explicit stores or a whole country                |
+| `find_best_store_for_item` | Rank stores by in-stock quantity                                       |
+| `check_cart_availability`  | Check whether every item in a shopping list is available at one store  |
+| `find_best_store_for_cart` | Rank stores by how much of a multi-item cart they can fill             |
+
+## How it is built
+
+- **Two transports from one server.** stdio for local clients and stateless Streamable HTTP for remote ones, with
+  optional `x-api-key` auth on `/mcp` and an open `/health` endpoint.
+- **Fan-out with limits.** A country-wide query asks every store in parallel, capped at 10 concurrent requests,
+  with one retry on 5xx, 429 or network errors and `Retry-After` respected.
+- **Errors that mean something.** A 404 is "not stocked here" and a 405 is "not a valid store"; both come back as
+  data on the row instead of failing the whole call, so an assistant can explain a partial answer.
+- **Forgiving input.** Item numbers are accepted as `20522046`, `005.221.32` or `5-221-32` and normalised.
+- **Small surface.** Two runtime dependencies (the MCP SDK and zod), inputs validated with zod schemas, unit tests
+  on the logic and smoke tests over both transports against the live API.
+
+## Limitations
+
+- Uses unofficial public IKEA APIs: no SLA, and it may break without notice.
+- US and Canada only. Canada coverage is complete (15 stores). US coverage is about 52 stores; four small-format
+  stores have unknown API IDs (Queens, Alpharetta, Indianapolis, Arlington), and the San Francisco small-format
+  store is excluded because its known ID returns 405.
+- Cash-and-carry availability only: click-and-collect and home delivery are not exposed.
+- Read-only: no cart, order or account operations.
+- `size` in `search_products` is capped by IKEA's API (observed maximum about 24 per page; `total` is the full
+  catalogue count).
+- The HTTP transport is open by default. Set the `API_KEY` environment variable to require an `x-api-key` header
+  on `/mcp`.
+
+## Tool reference
 
 ### `search_products`
 
@@ -366,7 +461,7 @@ npm test             # unit tests
 node smoke.mjs       # end-to-end stdio smoke test
 ```
 
-`smoke.mjs` exercises all 4 tools against the live IKEA API and prints pass/fail lines to stdout.
+`smoke.mjs` drives the built server over stdio against the live IKEA API and prints pass/fail lines to stdout; `smoke-http.mjs` does the same over HTTP.
 
 ## Transports
 
@@ -411,22 +506,6 @@ Endpoints after deploy:
 > ```bash
 > API_KEY=your-secret node dist/http.js
 > ```
-
-## Connecting a local MCP client (stdio)
-
-**Claude Desktop** (`claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "ikea-mcp": {
-      "command": "npx",
-      "args": ["-y", "ikea-mcp"]
-    }
-  }
-}
-```
-
----
 
 ## Connecting a remote MCP client (HTTP)
 
@@ -476,15 +555,6 @@ Confirmed compatible `storeId` formats:
 - 4-digit: `"921"` (Brooklyn, NY, US), `"1129"` (Syracuse, NY, US)
 
 An invalid or unsupported `storeId` returns a 405 error in the `errors` array.
-
-## Limitations
-
-- Uses unofficial public IKEA APIs — no SLA, no auth required, may break without notice.
-- Read-only: no cart, no order, no account operations.
-- Country-wide fan-out (`countryCode: "US"` ≈ 52 stores, `"CA"` ≈ 15) is capped at 10 concurrent requests and retries once on transient 5xx/network errors.
-- Click-and-collect and home-delivery availability are not exposed (cash-and-carry only).
-- `size` in `search_products` is capped by IKEA's API (observed max ~24 per page; `total` reflects the full catalogue count).
-- US and Canada only — no other countries supported.
 
 ## Item numbers
 
