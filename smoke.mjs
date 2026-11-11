@@ -249,6 +249,27 @@ try {
     const d = JSON.parse(lsNO.result.content[0].text);
     console.log(`list_stores[NO] ${d.stores?.length === 7 ? "OK" : "MISMATCH"} — ${d.stores?.length} store(s)`);
   }
+
+  // ── Distance search ─────────────────────────────────────────────────────────
+  send({ jsonrpc: "2.0", id: 21, method: "tools/call", params: { name: "find_nearby_stores", arguments: { latitude: 43.65, longitude: -79.38, maxResults: 3 } } });
+  const near = await readNext(10000);
+  if (near.error) {
+    console.log("find_nearby_stores[Toronto] FAIL:", JSON.stringify(near.error));
+  } else {
+    const d = JSON.parse(near.result.content[0].text);
+    const ok = d.stores?.length === 3 && d.stores.every((s) => s.countryCode === "CA") && d.stores[0].distanceKm < 30;
+    console.log(`find_nearby_stores[Toronto] ${ok ? "OK" : "MISMATCH"} — ${d.stores?.map((s) => `${s.storeId}(${s.distanceKm} km)`).join(", ")}`);
+  }
+
+  send({ jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "find_best_store_for_item", arguments: { itemNo: "20522046", near: { latitude: 43.65, longitude: -79.38 }, nearestStores: 4 } } });
+  const bestNear = await readNext(30000);
+  if (bestNear.error || bestNear.result?.isError) {
+    console.log("find_best_store_for_item[near Toronto] FAIL:", JSON.stringify(bestNear.error ?? bestNear.result.content[0].text));
+  } else {
+    const d = JSON.parse(bestNear.result.content[0].text);
+    const ok = d.every((r) => typeof r.distanceKm === "number" && String(r.storeLabel).endsWith("CA)"));
+    console.log(`find_best_store_for_item[near Toronto] ${ok ? "OK" : "MISMATCH"} — ${d.length} result(s): ${d.map((r) => `${r.storeId}(${r.quantity}, ${r.distanceKm} km)`).join(", ")}`);
+  }
 } catch (e) {
   failed = true;
   console.error("ERROR:", e.message);
