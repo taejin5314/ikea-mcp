@@ -423,13 +423,13 @@ test("compareStoreStock — storeIds takes precedence over countryCode", () => {
 
 test("storeIdsByCountry — CA returns only CA stores", () => {
   const ids = storeIdsByCountry("CA");
-  assert.equal(ids.length, 15);
+  assert.equal(ids.length, 16);
   ids.forEach((id) => assert.equal(storeCountry(id), "CA"));
 });
 
 test("storeIdsByCountry — US returns only US stores", () => {
   const ids = storeIdsByCountry("US");
-  assert.equal(ids.length, 52);
+  assert.equal(ids.length, 60);
   ids.forEach((id) => assert.equal(storeCountry(id), "US"));
 });
 
@@ -444,8 +444,8 @@ test("storeIdsByCountry — US, CA and NO partition all stores exactly", () => {
   const all = allStoreIds();
   assert.equal(us.length + ca.length + no.length, all.length);
   assert.equal(new Set([...us, ...ca, ...no]).size, all.length);
-  assert.equal(all.length, 74);
-  assert.equal(Object.keys(STORE_LABELS).length, 74);
+  assert.equal(all.length, 83);
+  assert.equal(Object.keys(STORE_LABELS).length, 83);
 });
 
 test("storeIdsByCountry — known CA store 149 is in CA set", () => {
@@ -744,16 +744,40 @@ test("countries — isCountryCode is a type guard over COUNTRY_CODES", () => {
 
 // ── store catalog labels ──────────────────────────────────────────────────────
 
-test("stores — US and CA labels are byte-identical to the v1.6.2 catalog", () => {
+// Stores that left the catalog since v1.6.2, and stores that joined it. Every other US and CA label is frozen.
+const REMOVED_SINCE_V162 = ["508"]; // Memphis: inactive in the stock API
+const ADDED_SINCE_V162: Record<string, string> = {
+  "658": "658 (San Francisco, CA)",
+  "1013": "1013 (Rockwall, TX)",
+  "1100": "1100 (Pharr, TX)",
+  "1130": "1130 (Chantilly, VA)",
+  "1132": "1132 (Scottsdale, AZ)",
+  "1232": "1232 (Huntsville, AL)",
+  "1253": "1253 (Webster, TX)",
+  "1284": "1284 (Culver City, CA)",
+  "1309": "1309 (Tulsa, OK)",
+  "1340": "1340 (London, ON, CA)",
+};
+
+test("stores — US and CA labels from the v1.6.2 catalog are byte-identical; changes since are listed", () => {
   const expected = JSON.parse(
     readFileSync(new URL("./fixtures/store-labels-v1.6.2.json", import.meta.url), "utf8")
   ) as Record<string, string>;
+  assert.equal(Object.keys(expected).length, 67);
+  for (const id of REMOVED_SINCE_V162) delete expected[id];
   const actual: Record<string, string> = {};
   for (const s of STORES) {
     if (s.countryCode !== "NO") actual[s.storeId] = storeLabelFor(s);
   }
-  assert.deepEqual(actual, expected);
-  assert.equal(Object.keys(expected).length, 67);
+  assert.deepEqual(actual, { ...expected, ...ADDED_SINCE_V162 });
+  for (const id of REMOVED_SINCE_V162) assert.equal(storeLabel(id), undefined, `${id} is gone`);
+});
+
+test("stores — every catalog store has a coordinate", () => {
+  assert.deepEqual(
+    STORES.filter((s) => !STORE_COORDINATES[s.storeId]).map((s) => s.storeId),
+    []
+  );
 });
 
 test("stores — Norwegian labels use name, city and NO", () => {
@@ -912,19 +936,19 @@ test("list_stores — countryCode NO returns the seven Norwegian stores", async 
   assert.equal(stores[2].storeLabel, "095 (Furuset, Oslo, NO)");
 });
 
-test("list_stores — no filter returns all 74 stores with correct country tags", async () => {
+test("list_stores — no filter returns all 83 stores with correct country tags", async () => {
   const { stores } = await listStores({});
-  assert.equal(stores.length, 74);
-  assert.equal(stores.filter((s) => s.countryCode === "US").length, 52);
-  assert.equal(stores.filter((s) => s.countryCode === "CA").length, 15);
+  assert.equal(stores.length, 83);
+  assert.equal(stores.filter((s) => s.countryCode === "US").length, 60);
+  assert.equal(stores.filter((s) => s.countryCode === "CA").length, 16);
   assert.equal(stores.filter((s) => s.countryCode === "NO").length, 7);
   assert.equal(stores.find((s) => s.storeId === "149")?.countryCode, "CA");
   assert.equal(stores.find((s) => s.storeId === "399")?.countryCode, "US");
 });
 
-test("list_stores — countryCode CA still returns 15 stores", async () => {
+test("list_stores — countryCode CA returns the 16 Canadian stores", async () => {
   const { stores } = await listStores({ countryCode: "ca" });
-  assert.equal(stores.length, 15);
+  assert.equal(stores.length, 16);
   assert.ok(stores.every((s) => s.countryCode === "CA"));
 });
 
@@ -1038,7 +1062,6 @@ test("every coordinate belongs to a catalog store and is a plausible place for i
     const [south, north, west, east] = box[country!];
     assert.ok(at.lat >= south && at.lat <= north && at.lon >= west && at.lon <= east, `${storeId} (${country}) at ${at.lat},${at.lon}`);
   }
-  assert.ok(Object.keys(STORE_COORDINATES).length >= STORES.length - 2, "nearly every catalog store has a coordinate");
 });
 
 test("nearestStores returns the closest stores first and respects country, limit and radius", () => {

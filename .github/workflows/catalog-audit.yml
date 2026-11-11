@@ -1,0 +1,46 @@
+name: Catalog audit
+
+# Once a week, compare the store catalog with IKEA's public store lists and open an issue when a store
+# has opened or closed.
+on:
+  schedule:
+    - cron: '41 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compare the catalog with IKEA's store lists
+        run: node scripts/audit-catalog.mjs 2>&1 | tee audit.log
+        shell: bash -o pipefail {0}
+      - name: Open or update an issue on drift
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Store catalog is out of date
+        run: |
+          {
+            echo "The weekly audit found a difference between \`src/data/stores.ts\` and IKEA's store lists."
+            echo "See CONTRIBUTING.md, \"Adding or removing a store\"."
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo '```'
+            tail -40 audit.log
+            echo '```'
+          } > body.md
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file body.md
+          fi

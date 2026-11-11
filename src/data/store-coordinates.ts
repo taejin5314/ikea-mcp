@@ -56,9 +56,18 @@ export const STORE_COORDINATES: Readonly<Record<string, Coordinates>> = {
   "560": { lat: 42.9079, lon: -87.9387 }, // IKEA Milwaukee - Oak Creek
   "569": { lat: 36.8763, lon: -76.2014 }, // IKEA Norfolk
   "570": { lat: 29.5667, lon: -98.3381 }, // IKEA San Antonio - Live Oak
+  "658": { lat: 37.7828, lon: -122.4088 }, // IKEA San Francisco - Market Street
   "921": { lat: 40.6720, lon: -74.0115 }, // IKEA New York - Brooklyn
+  "1013": { lat: 32.9180, lon: -96.4265 }, // IKEA Dallas - Rockwall
   "1099": { lat: 32.8695, lon: -96.7689 }, // IKEA Dallas - University Park
+  "1100": { lat: 26.2042, lon: -98.2016 }, // IKEA McAllen Pharr - Town Center
   "1129": { lat: 43.0686, lon: -76.1743 }, // IKEA Syracuse - Destiny Mall
+  "1130": { lat: 38.8881, lon: -77.4399 }, // IKEA Washington - Chantilly
+  "1132": { lat: 33.5998, lon: -111.9837 }, // IKEA Phoenix - Scottsdale
+  "1232": { lat: 34.7415, lon: -86.6762 }, // IKEA Huntsville - University Place
+  "1253": { lat: 29.5385, lon: -95.1360 }, // IKEA Webster - Bay Area
+  "1284": { lat: 34.0307, lon: -118.3848 }, // IKEA Los Angeles - Culver City
+  "1309": { lat: 36.0574, lon: -96.0012 }, // IKEA Tulsa - Tulsa Hills
   "003": { lat: 49.1899, lon: -123.0797 }, // IKEA Vancouver - Richmond
   "004": { lat: 45.3503, lon: -75.7841 }, // IKEA Ottawa
   "039": { lat: 45.4912, lon: -73.6908 }, // IKEA Montreal - Ville St. Laurent
@@ -74,6 +83,7 @@ export const STORE_COORDINATES: Readonly<Record<string, Coordinates>> = {
   "529": { lat: 44.7130, lon: -63.5575 }, // IKEA Halifax - Nova Scotia
   "559": { lat: 46.7766, lon: -71.3495 }, // IKEA Quebec City
   "659": { lat: 43.6597, lon: -79.3830 }, // IKEA Toronto - Downtown
+  "1340": { lat: 42.9308, lon: -81.2229 }, // IKEA London - White Oak Mall
   "007": { lat: 58.1873, lon: 8.1584 }, // IKEA Kristiansand - Sørlandet
   "091": { lat: 59.8739, lon: 10.4974 }, // IKEA Oslo - Slependen
   "095": { lat: 59.9338, lon: 10.8731 }, // IKEA Oslo - Furuset

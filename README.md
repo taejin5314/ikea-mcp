@@ -142,7 +142,8 @@ and answer nearest first:
 - **Declared read-only.** Every tool carries MCP annotations (`readOnlyHint`, a title), so clients know they
   change nothing.
 - **Watched daily.** A scheduled job runs the smoke test against the live API and opens an issue when IKEA changes
-  something.
+  something. A weekly job compares the store catalog with IKEA's own store lists and opens an issue when a store
+  opens or closes.
 - **Forgiving input.** Item numbers are accepted as `20522046`, `005.221.32` or `5-221-32` and normalised.
 - **Small surface.** Two runtime dependencies (the MCP SDK and zod), inputs validated with zod schemas, unit tests
   on the logic and smoke tests over both transports against the live API.
@@ -150,10 +151,9 @@ and answer nearest first:
 ## Limitations
 
 - Uses unofficial public IKEA APIs: no SLA, and it may break without notice.
-- US, Canada and Norway only. Canada coverage is complete (15 stores). Norway coverage is the 7 full-size stores;
-  planning studios and the Oslo city-centre store are excluded because they have no cash-and-carry stock. US
-  coverage is 52 stores; four small-format stores have unknown API IDs (Queens, Alpharetta, Indianapolis,
-  Arlington), and the San Francisco small-format store is excluded because its known ID returns 405.
+- US, Canada and Norway only: 60 US stores, 16 in Canada and 7 in Norway, which is every store and small-format
+  store IKEA lists as selling cash-and-carry in those countries. Plan-and-order points are excluded because they
+  carry no stock, and so is the Østfold small store in Norway, whose stock the API does not report.
 - Cash-and-carry availability only: click-and-collect and home delivery are not exposed.
 - Read-only: no cart, order or account operations.
 - `size` in `search_products` is capped by IKEA's API (observed maximum about 24 per page; `total` is the full
@@ -337,7 +337,7 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 | `countryCode` | `"US"` \| `"CA"` \| `"NO"` | — | no |
 | `minQuantity` | number (int ≥ 1) | — | no |
 
-`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 74 known stores. `minQuantity` excludes stores with quantity below the threshold.
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 83 known stores. `minQuantity` excludes stores with quantity below the threshold.
 
 **Output** — array of matching stores, up to `maxResults`:
 ```json
@@ -352,7 +352,7 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 ]
 ```
 
-Returns `[]` if no store has the item in stock. "All known stores" means the 74 US, Canada and Norway entries in `src/data/stores.ts`.
+Returns `[]` if no store has the item in stock. "All known stores" means the 83 US, Canada and Norway entries in `src/data/stores.ts`.
 
 **Note on failures:** stores that return a store-level error (405 invalid store ID) are silently excluded from results rather than appearing as rows. Use `compare_store_stock` with the same `storeIds` to inspect per-store `errors` directly.
 
@@ -408,7 +408,7 @@ Find the best store to buy multiple items in one trip. Ranks stores by how many 
 | `countryCode` | `"US"` \| `"CA"` \| `"NO"` | — | no |
 | `maxResults` | number | `3` (max 50) | no |
 
-`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 74 known stores.
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 83 known stores.
 
 **Output** — array of stores ranked by cart fulfillment, up to `maxResults`:
 ```json
@@ -601,7 +601,7 @@ The `Accept: application/json, text/event-stream` header is required by the MCP 
 
 ## Store IDs
 
-Store metadata (ID → city label) lives in `src/data/stores.ts`. 52 US stores confirmed from `ikea.com/us/en/stores/` pages; 15 Canada stores confirmed from `ikea.com/ca/en/stores/` pages (all probed against the stock API). 7 Norway stores confirmed from `ikea.com/no/no/stores/` pages (store code in the page's embedded business-unit JSON), all probed against the stock API.
+Store metadata (ID → city label) lives in `src/data/stores.ts`. 60 US stores confirmed from `ikea.com/us/en/stores/` pages and IKEA's public store list; 16 Canada stores confirmed from `ikea.com/ca/en/stores/` pages (all probed against the stock API). 7 Norway stores confirmed from `ikea.com/no/no/stores/` pages (store code in the page's embedded business-unit JSON), all probed against the stock API.
 
 Confirmed compatible `storeId` formats:
 - Standard 3-digit: `"399"` (Burbank, CA, US), `"216"` (Calgary, AB, CA)
@@ -631,11 +631,11 @@ Item numbers are per market. An item found with `countryCode: "US"` may not exis
 
 | Country | Code | Store count |
 |---|---|---|
-| United States | `US` | 52 |
-| Canada | `CA` | 15 |
+| United States | `US` | 60 |
+| Canada | `CA` | 16 |
 | Norway | `NO` | 7 |
 
-Use `list_stores` to get the current catalog. Some store IDs in the catalog are unverified — they are listed but may return 405 from the stock API.
+Use `list_stores` to get the current catalog. Every store in it answered the stock API when it was added, and a weekly job checks the catalog against IKEA's store lists. To add a store or a country, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Rate limits & reliability
 
