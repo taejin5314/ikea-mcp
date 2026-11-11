@@ -1,7 +1,7 @@
 {
   "name": "ikea-mcp",
-  "version": "1.8.0",
-  "description": "Read-only MCP server for IKEA product search and in-store stock lookup. Supports stdio and Streamable HTTP transports.",
+  "version": "1.9.0",
+  "description": "MCP server for IKEA product search and live in-store stock in the US, Canada and Norway: find the nearest store that has an item or a whole shopping list. Read-only, stdio and Streamable HTTP.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -10,14 +10,19 @@
   },
   "files": [
     "dist/",
-    "Procfile"
+    "Procfile",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "mcp",
     "ikea",
     "model-context-protocol",
     "stock",
-    "inventory"
+    "inventory",
+    "mcp-server",
+    "claude",
+    "store-locator",
+    "availability"
   ],
   "repository": {
     "type": "git",
