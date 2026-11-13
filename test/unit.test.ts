@@ -1271,3 +1271,31 @@ test("tool schemas — maxDistanceKm is optional on the ranking tools", () => {
     assert.equal(tool.inputSchema.required.includes("maxDistanceKm"), false, `${tool.name} maxDistanceKm required`);
   }
 });
+
+function sectionBetween(text: string, start: string, end: string): string {
+  const from = text.indexOf(start);
+  assert.ok(from !== -1, `marker not found: ${start}`);
+  const to = text.indexOf(end, from + start.length);
+  assert.ok(to !== -1, `marker not found after "${start}": ${end}`);
+  return text.slice(from, to);
+}
+
+test("docs — README explains maxDistanceKm under Finding stores by place", () => {
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const section = sectionBetween(readme, "## Finding stores by place", "## How it is built");
+  assert.ok(section.includes("maxDistanceKm"));
+});
+
+test("docs — README parameter tables of the ranking tools list maxDistanceKm", () => {
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const itemTool = sectionBetween(readme, "### `find_best_store_for_item`", "### `check_cart_availability`");
+  assert.ok(itemTool.includes("| `maxDistanceKm` |"));
+  const cartTool = sectionBetween(readme, "### `find_best_store_for_cart`", "## Example workflows");
+  assert.ok(cartTool.includes("| `maxDistanceKm` |"));
+});
+
+test("docs — CHANGELOG lists maxDistanceKm under Unreleased above 1.9.0", () => {
+  const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+  const unreleased = sectionBetween(changelog, "## Unreleased", "## 1.9.0");
+  assert.ok(unreleased.includes("maxDistanceKm"));
+});
