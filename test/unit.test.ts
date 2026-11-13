@@ -379,7 +379,7 @@ test("projectMultiItemStock — invalid store (405) all items get store error", 
 
 // ── compareStoreStock input resolution ───────────────────────────────────────
 
-import { CompareStoreStockInput, CheckCartAvailabilityInput, FindBestStoreForCartInput, ListStoresInput, CheckMultiItemStockInput, FindBestStoreInput, SearchProductsInput, GetProductDetailsInput } from "../src/schemas/index.js";
+import { CompareStoreStockInput, CheckCartAvailabilityInput, FindBestStoreForCartInput, FindNearbyStoresInput, ListStoresInput, CheckMultiItemStockInput, FindBestStoreInput, SearchProductsInput, GetProductDetailsInput } from "../src/schemas/index.js";
 
 test("compareStoreStock — storeIds provided, no countryCode: uses storeIds", () => {
   const input = CompareStoreStockInput.parse({ itemNo: "20522046", storeIds: ["399", "026"] });
@@ -1152,6 +1152,107 @@ test("find_best_store_for_cart with near ranks equally good stores nearest first
     assert.equal(rows.length, 4);
     const km = rows.map((r: { distanceKm: number }) => r.distanceKm);
     assert.deepEqual(km, [...km].sort((a, b) => a - b));
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+const NEAR_TORONTO = { latitude: 43.65, longitude: -79.38 };
+
+test("resolveTargets with near and maxDistanceKm keeps only the stores within that distance, nearest first", () => {
+  const { storeIds, distances } = resolveTargets({ near: NEAR_TORONTO, nearestStores: 5, maxDistanceKm: 15 });
+  assert.ok(storeIds.includes("256"));
+  assert.ok(storeIds.includes("149"));
+  assert.equal(distances.size, storeIds.length);
+  const km = storeIds.map((id) => distances.get(id) as number);
+  assert.ok(km.every((d) => d <= 15));
+  assert.deepEqual(km, [...km].sort((a, b) => a - b));
+});
+
+test("resolveTargets with near and no maxDistanceKm still searches nearestStores stores", () => {
+  const { storeIds, distances } = resolveTargets({ near: NEAR_TORONTO, nearestStores: 5 });
+  assert.equal(storeIds.length, 5);
+  assert.equal(distances.size, 5);
+});
+
+test("resolveTargets with a maxDistanceKm no store is within returns no stores and no distances", () => {
+  const { storeIds, distances } = resolveTargets({ near: NEAR_TORONTO, nearestStores: 5, maxDistanceKm: 0.1 });
+  assert.deepEqual(storeIds, []);
+  assert.equal(distances.size, 0);
+});
+
+test("resolveTargets ignores maxDistanceKm when storeIds are given", () => {
+  const { storeIds, distances } = resolveTargets({ storeIds: ["399", "026"], maxDistanceKm: 1, nearestStores: 5 });
+  assert.deepEqual(storeIds, ["399", "026"]);
+  assert.equal(distances.size, 0);
+});
+
+test("ranking schemas accept maxDistanceKm with near or with storeIds", () => {
+  assert.equal(FindBestStoreInput.parse({ itemNo: "20522046", near: NEAR_TORONTO, maxDistanceKm: 50 }).maxDistanceKm, 50);
+  assert.equal(
+    FindBestStoreForCartInput.parse({ items: [{ itemNo: "20522046" }], near: NEAR_TORONTO, maxDistanceKm: 50 }).maxDistanceKm,
+    50
+  );
+  assert.equal(FindBestStoreInput.parse({ itemNo: "20522046", storeIds: ["399", "026"], maxDistanceKm: 1 }).maxDistanceKm, 1);
+  assert.equal(FindBestStoreInput.parse({ itemNo: "20522046", near: NEAR_TORONTO }).maxDistanceKm, undefined);
+});
+
+test("ranking schemas reject maxDistanceKm without near or storeIds", () => {
+  assert.throws(() => FindBestStoreInput.parse({ itemNo: "20522046", maxDistanceKm: 50 }), /maxDistanceKm needs near/);
+  assert.throws(
+    () => FindBestStoreForCartInput.parse({ items: [{ itemNo: "20522046" }], maxDistanceKm: 50 }),
+    /maxDistanceKm needs near/
+  );
+  assert.throws(
+    () => FindBestStoreInput.parse({ itemNo: "20522046", countryCode: "CA", maxDistanceKm: 50 }),
+    /maxDistanceKm needs near/
+  );
+});
+
+test("ranking schemas reject a zero or negative maxDistanceKm like FindNearbyStoresInput", () => {
+  for (const maxDistanceKm of [0, -5]) {
+    assert.throws(() => FindBestStoreInput.parse({ itemNo: "20522046", near: NEAR_TORONTO, maxDistanceKm }));
+    assert.throws(() => FindBestStoreForCartInput.parse({ items: [{ itemNo: "20522046" }], near: NEAR_TORONTO, maxDistanceKm }));
+    assert.throws(() => FindNearbyStoresInput.parse({ latitude: 43.65, longitude: -79.38, maxDistanceKm }));
+  }
+});
+
+test("find_best_store_for_item returns an empty list without calling IKEA when no store is within maxDistanceKm", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(makeStockResponse())));
+  try {
+    const result = await findBestStoreForItemTool.handler({ itemNo: "20522046", near: NEAR_TORONTO, maxDistanceKm: 0.1 });
+    assert.deepEqual(JSON.parse(result.content[0].text), []);
+    assert.equal(fetchMock.mock.callCount(), 0);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("find_best_store_for_cart returns an empty list without calling IKEA when no store is within maxDistanceKm", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(makeStockResponse())));
+  try {
+    const result = await findBestStoreForCartTool.handler({
+      items: [{ itemNo: "20522046", quantity: 1 }],
+      near: NEAR_TORONTO,
+      maxDistanceKm: 0.1,
+    });
+    assert.deepEqual(JSON.parse(result.content[0].text), []);
+    assert.equal(fetchMock.mock.callCount(), 0);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("callTool reports maxDistanceKm without near as a tool error that names the field", async () => {
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(makeStockResponse())));
+  try {
+    const result = (await callTool("find_best_store_for_item", { itemNo: "20522046", maxDistanceKm: 50 })) as {
+      isError?: boolean;
+      content: { text: string }[];
+    };
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^Invalid input for find_best_store_for_item: maxDistanceKm: maxDistanceKm needs near/);
+    assert.equal(fetchMock.mock.callCount(), 0);
   } finally {
     fetchMock.mock.restore();
   }
