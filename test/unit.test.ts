@@ -1257,3 +1257,17 @@ test("callTool reports maxDistanceKm without near as a tool error that names the
     fetchMock.mock.restore();
   }
 });
+
+test("tool schemas — the ranking tools list maxDistanceKm with a description", () => {
+  for (const tool of [findBestStoreForItemTool, findBestStoreForCartTool]) {
+    const props = tool.inputSchema.properties as unknown as Record<string, { type?: string; description?: string }>;
+    assert.equal(props.maxDistanceKm.type, "number", `${tool.name} maxDistanceKm type`);
+    assert.equal(props.maxDistanceKm.description, "Leave out stores farther than this.", `${tool.name} maxDistanceKm description`);
+  }
+});
+
+test("tool schemas — maxDistanceKm is optional on the ranking tools", () => {
+  for (const tool of [findBestStoreForItemTool, findBestStoreForCartTool]) {
+    assert.equal(tool.inputSchema.required.includes("maxDistanceKm"), false, `${tool.name} maxDistanceKm required`);
+  }
+});
