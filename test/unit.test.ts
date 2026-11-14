@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
+import { checkStockResponse, projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
 import { storeIdsByCountry, STORE_LABELS, STORES, storeLabel, storeLabelFor, storeCountry, allStoreIds } from "../src/data/stores.js";
 import { readFileSync } from "node:fs";
 import { COUNTRY_CODES, DEFAULT_LANG_CODE, defaultLangCode, isCountryCode } from "../src/data/countries.js";
@@ -920,6 +920,126 @@ test("check_cart_availability — item outside the store's range is insufficient
   } finally {
     fetchMock.mock.restore();
   }
+});
+
+// ── Stock response check ──────────────────────────────────────────────────────
+
+test("checkStockResponse returns today's stock response unchanged", () => {
+  const body: unknown = makeStockResponse();
+  assert.equal(checkStockResponse(body), body);
+  assert.deepEqual(projectStock(checkStockResponse(body)), {
+    availableForCashCarry: true,
+    inRange: null,
+    quantity: 42,
+    messageType: "HIGH_IN_STOCK",
+    eligibleForStockNotification: false,
+    errors: [],
+  });
+});
+
+test("checkStockResponse accepts null availabilities with a 405 error", () => {
+  const body: unknown = makeStockResponse({
+    availabilities: null,
+    errors: [{ code: 405, message: "ClassUnitCode doesn't exist" }],
+  });
+  assert.equal(checkStockResponse(body), body);
+});
+
+test("checkStockResponse accepts an item with no availability and inRange false", () => {
+  const body: unknown = withRange(false);
+  assert.equal(checkStockResponse(body), body);
+});
+
+test("checkStockResponse accepts an empty availabilities array and absent errors", () => {
+  const body: unknown = makeStockResponse({ availabilities: [] });
+  assert.doesNotThrow(() => checkStockResponse(body));
+});
+
+test("checkStockResponse names a renamed cashCarry key", () => {
+  const item = makeStockResponse().availabilities![0];
+  const body: unknown = {
+    ...makeStockResponse(),
+    availabilities: [{ ...item, buyingOption: { cashAndCarry: item.buyingOption.cashCarry } }],
+  };
+  assert.throws(
+    () => checkStockResponse(body),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message === "IKEA stock response changed: availabilities.0.buyingOption.cashCarry is missing"
+  );
+});
+
+test("checkStockResponse names quantity when it is a string and keeps the value out of the message", () => {
+  const base = withRange(true, 7);
+  const item = base.availabilities![0];
+  const cashCarry = item.buyingOption.cashCarry;
+  const body: unknown = {
+    ...base,
+    availabilities: [
+      {
+        ...item,
+        buyingOption: {
+          ...item.buyingOption,
+          cashCarry: { ...cashCarry, availability: { ...cashCarry.availability!, quantity: "forty-two" } },
+        },
+      },
+    ],
+  };
+  assert.throws(
+    () => checkStockResponse(body),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      /^IKEA stock response changed: availabilities\.0\.buyingOption\.cashCarry\.availability\.quantity: /.test(err.message) &&
+      !err.message.includes("forty-two")
+  );
+});
+
+test("checkStockResponse ignores unknown fields at every level", () => {
+  const body: unknown = {
+    extra: 1,
+    availabilities: [
+      {
+        extra: 1,
+        availableForCashCarry: true,
+        buyingOption: {
+          extra: 1,
+          cashCarry: {
+            extra: 1,
+            availability: {
+              extra: 1,
+              quantity: 42,
+              probability: { extra: 1, thisDay: { extra: 1, messageType: "HIGH_IN_STOCK" } },
+            },
+            eligibleForStockNotification: false,
+            range: { inRange: true, extra: 1 },
+          },
+        },
+        itemKey: { itemNo: "20522046", extra: 1 },
+      },
+    ],
+    errors: [{ code: 404, message: "Not found", extra: 1, details: { itemNo: "20522046", extra: 1 } }],
+  };
+  const before = structuredClone(body);
+  assert.equal(checkStockResponse(body), body);
+  assert.deepEqual(body, before);
+});
+
+test("checkStockResponse rejects a response without availabilities", () => {
+  assert.throws(
+    () => checkStockResponse({}),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message === "IKEA stock response changed: availabilities is missing"
+  );
+});
+
+test("checkStockResponse rejects a response that is not an object", () => {
+  assert.throws(
+    () => checkStockResponse([]),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message.startsWith("IKEA stock response changed: response: ")
+  );
 });
 
 // ── list_stores handler and tool schemas ──────────────────────────────────────

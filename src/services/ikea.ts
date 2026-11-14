@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { fetchJson } from "../utils/http.js";
+import { UpstreamShapeError } from "../utils/errors.js";
 
 const SEARCH_BASE = "https://sik.search.blue.cdtapps.com";
 const STOCK_BASE = "https://api.ingka.ikea.com/cia/availabilities";
@@ -116,6 +118,48 @@ export interface StockResponse {
   errors?: StockError[];
   timestamp: string;
   // TODO: traceId not typed — not needed for MVP
+}
+
+// ── Stock response check ─────────────────────────────────────────────────────
+// The schema lists only the fields this server reads; unknown fields are ignored.
+
+const StockAvailabilitySchema = z.object({
+  quantity: z.number(),
+  probability: z.object({ thisDay: z.object({ messageType: z.string() }) }),
+});
+
+const StockCashCarrySchema = z.object({
+  availability: StockAvailabilitySchema.optional(),
+  eligibleForStockNotification: z.boolean(),
+  range: z.object({ inRange: z.boolean() }).optional(),
+});
+
+const StockAvailabilityItemSchema = z.object({
+  availableForCashCarry: z.boolean(),
+  buyingOption: z.object({ cashCarry: StockCashCarrySchema }),
+  itemKey: z.object({ itemNo: z.string() }),
+});
+
+const StockErrorSchema = z.object({
+  code: z.number(),
+  message: z.string(),
+  details: z.object({ itemNo: z.string().optional() }).optional(),
+});
+
+const StockResponseSchema = z.object({
+  availabilities: z.array(StockAvailabilityItemSchema).nullable(),
+  errors: z.array(StockErrorSchema).optional(),
+});
+
+/**
+ * Returns IKEA's stock response unchanged.
+ * Throws UpstreamShapeError when it is not the shape this server reads.
+ */
+export function checkStockResponse(json: unknown): StockResponse {
+  const parsed = StockResponseSchema.safeParse(json);
+  if (!parsed.success) throw new UpstreamShapeError("stock", parsed.error);
+  // This line stops compiling if the interface and the schema disagree.
+  return (json as StockResponse) satisfies z.infer<typeof StockResponseSchema>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
