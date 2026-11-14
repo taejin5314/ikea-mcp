@@ -1852,3 +1852,15 @@ test("docs — CHANGELOG has an Unreleased section above 1.10.0 that mentions th
   const unreleased = sectionBetween(changelog, "## Unreleased", "## 1.10.0");
   assert.ok(unreleased.includes("stock response"));
 });
+
+test("docs — README mentions the search response check under How it is built", () => {
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const section = sectionBetween(readme, "## How it is built", "## Limitations");
+  assert.ok(section.includes("search response"));
+});
+
+test("docs — CHANGELOG Unreleased mentions the search response check", () => {
+  const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+  const unreleased = sectionBetween(changelog, "## Unreleased", "## 1.10.0");
+  assert.ok(unreleased.includes("search response"));
+});

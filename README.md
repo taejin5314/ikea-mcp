@@ -145,7 +145,9 @@ and answer nearest first:
   after 10 seconds.
 - **A changed IKEA response is an error, not an empty answer.** The stock response is checked against a zod schema
   where it enters the server. When IKEA renames or moves a field the server reads, the call fails with an error that
-  names the field, instead of answering `quantity: null`.
+  names the field, instead of answering `quantity: null`. The search response is checked the same way, so a renamed
+  product field fails `search_products` and `get_product_details` with an error that names it, instead of answering
+  an `undefined` price or name.
 - **Declared read-only.** Every tool carries MCP annotations (`readOnlyHint`, a title), so clients know they
   change nothing.
 - **Watched daily.** A scheduled job runs the smoke test against the live API and opens an issue when IKEA changes
