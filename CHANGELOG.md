@@ -3,7 +3,10 @@
 Notable changes to ikea-mcp. Versions follow [semantic versioning](https://semver.org/): a result's existing keys
 and meaning do not change within a major version.
 
-## Unreleased
+## 1.10.0
+
+The first release since 1.6.2. Versions 1.7.0, 1.8.0 and 1.9.0 were prepared but never published; their changes,
+listed under 1.9.0 below, ship here.
 
 ### Added
 
@@ -13,7 +16,8 @@ and meaning do not change within a major version.
 
 ## 1.9.0
 
-The first release since 1.6.2. Versions 1.7.0 and 1.8.0 were prepared but never published; their changes ship here.
+Prepared but never published; these changes ship in 1.10.0. Versions 1.7.0 and 1.8.0 were not published either,
+and their changes are listed here.
 
 ### Added
 
