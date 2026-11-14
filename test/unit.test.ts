@@ -1574,3 +1574,15 @@ test("docs — CHANGELOG lists maxDistanceKm under 1.10.0 above 1.9.0", () => {
   const release = sectionBetween(changelog, "## 1.10.0", "## 1.9.0");
   assert.ok(release.includes("maxDistanceKm"));
 });
+
+test("docs — README mentions the stock response check under How it is built", () => {
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const section = sectionBetween(readme, "## How it is built", "## Limitations");
+  assert.ok(section.includes("stock response"));
+});
+
+test("docs — CHANGELOG has an Unreleased section above 1.10.0 that mentions the stock response check", () => {
+  const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+  const unreleased = sectionBetween(changelog, "## Unreleased", "## 1.10.0");
+  assert.ok(unreleased.includes("stock response"));
+});
