@@ -114,7 +114,8 @@ interface StockError {
 }
 
 export interface StockResponse {
-  availabilities: StockAvailabilityItem[] | null;
+  /** Left out, not null, when the store does not exist: the live API then answers only `errors` (405). */
+  availabilities?: StockAvailabilityItem[] | null;
   errors?: StockError[];
   timestamp: string;
   // TODO: traceId not typed — not needed for MVP
@@ -146,10 +147,16 @@ const StockErrorSchema = z.object({
   details: z.object({ itemNo: z.string().optional() }).optional(),
 });
 
-const StockResponseSchema = z.object({
-  availabilities: z.array(StockAvailabilityItemSchema).nullable(),
-  errors: z.array(StockErrorSchema).optional(),
-});
+// An unknown store is answered with `errors` alone, so `availabilities` may be left out; a response with neither
+// is not one this server knows.
+const StockResponseSchema = z
+  .object({
+    availabilities: z.array(StockAvailabilityItemSchema).nullish(),
+    errors: z.array(StockErrorSchema).optional(),
+  })
+  .refine((r) => r.availabilities !== undefined || r.errors !== undefined, {
+    message: "neither availabilities nor errors is present",
+  });
 
 /**
  * Returns IKEA's stock response unchanged.

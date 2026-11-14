@@ -1024,12 +1024,25 @@ test("checkStockResponse ignores unknown fields at every level", () => {
   assert.deepEqual(body, before);
 });
 
-test("checkStockResponse rejects a response without availabilities", () => {
+test("checkStockResponse accepts the live answer for an unknown store: errors and no availabilities key", () => {
+  // Captured from the live API on 14 November 2026 for store 999.
+  const body: unknown = {
+    errors: [
+      { code: 405, details: { classUnitCode: "999", classUnitType: "STO" }, message: "ClassUnitCode doesn't exist" },
+    ],
+    timestamp: "2026-11-14T20:50:32.813Z",
+    traceId: "10028873663796547713",
+  };
+  assert.equal(checkStockResponse(body), body);
+  assert.equal(projectStock(body as StockResponse).errors[0]?.meaning, "store ID does not exist");
+});
+
+test("checkStockResponse rejects a response with neither availabilities nor errors", () => {
   assert.throws(
-    () => checkStockResponse({}),
+    () => checkStockResponse({ timestamp: "t" }),
     (err: unknown) =>
       err instanceof UpstreamShapeError &&
-      err.message === "IKEA stock response changed: availabilities is missing"
+      err.message === "IKEA stock response changed: response: neither availabilities nor errors is present"
   );
 });
 
