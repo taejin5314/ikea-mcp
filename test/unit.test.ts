@@ -1042,6 +1042,84 @@ test("checkStockResponse rejects a response that is not an object", () => {
   );
 });
 
+function makeChangedStockResponse(): unknown {
+  const base = makeStockResponse();
+  const item = base.availabilities![0];
+  return { ...base, availabilities: [{ ...item, buyingOption: { cashAndCarry: item.buyingOption.cashCarry } }] };
+}
+
+type ToolCallResult = { isError?: boolean; content: { text: string }[] };
+
+test("callTool reports a changed stock response as a tool error instead of empty stock values", async () => {
+  const body = makeChangedStockResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_store_stock", { itemNo: "20522046", storeId: "399" })) as ToolCallResult;
+    assert.equal(result.isError, true);
+    assert.equal(
+      result.content[0].text,
+      "check_store_stock failed: IKEA stock response changed: availabilities.0.buyingOption.cashCarry is missing. This server needs an update."
+    );
+    assert.ok(!result.content[0].text.includes("quantity"));
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("a changed stock response is not retried and does not leak the request URL", async () => {
+  const body = makeChangedStockResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_store_stock", { itemNo: "20522046", storeId: "399" })) as ToolCallResult;
+    assert.equal(fetchMock.mock.callCount(), 1);
+    assert.ok(!result.content[0].text.includes("api.ingka.ikea.com"));
+    assert.ok(!result.content[0].text.includes("Invalid input"));
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("callTool reports a changed stock response on the multi-item path as a tool error", async () => {
+  const body = makeChangedStockResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_multi_item_stock", { storeId: "399", itemNos: ["20522046"] })) as ToolCallResult;
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^check_multi_item_stock failed: IKEA stock response changed: /);
+    assert.equal(fetchMock.mock.callCount(), 1);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("check_store_stock still answers a stock response in today's shape", async () => {
+  const body = makeStockResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_store_stock", { itemNo: "20522046", storeId: "399" })) as ToolCallResult;
+    assert.notEqual(result.isError, true);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.equal(parsed.quantity, 42);
+    assert.equal(parsed.availableForCashCarry, true);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("check_store_stock still answers a 405 store error as data", async () => {
+  const body = makeStockResponse({ availabilities: null, errors: [{ code: 405, message: "ClassUnitCode doesn't exist" }] });
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_store_stock", { itemNo: "20522046", storeId: "399" })) as ToolCallResult;
+    assert.notEqual(result.isError, true);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.equal(parsed.quantity, null);
+    assert.equal(parsed.errors[0].meaning, "store ID does not exist");
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
 // ── list_stores handler and tool schemas ──────────────────────────────────────
 
 async function listStores(args: Record<string, unknown>) {

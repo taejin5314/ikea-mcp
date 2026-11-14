@@ -295,9 +295,7 @@ export async function getMultiItemStock(
   const url =
     `${STOCK_BASE}/sto/${storeId}` +
     `?itemNos=${itemNos.map(encodeURIComponent).join(",")}&expand=StoresList,Restocks`;
-  return fetchJson<StockResponse>(url, {
-    "X-Client-Id": STOCK_CLIENT_ID,
-  });
+  return checkStockResponse(await fetchJson<unknown>(url, { "X-Client-Id": STOCK_CLIENT_ID }));
 }
 
 export async function getStoreStock(
@@ -310,7 +308,5 @@ export async function getStoreStock(
   const url =
     `${STOCK_BASE}/sto/${storeId}` +
     `?itemNos=${encodeURIComponent(itemNo)}&expand=StoresList,Restocks`;
-  return fetchJson<StockResponse>(url, {
-    "X-Client-Id": STOCK_CLIENT_ID,
-  });
+  return checkStockResponse(await fetchJson<unknown>(url, { "X-Client-Id": STOCK_CLIENT_ID }));
 }
