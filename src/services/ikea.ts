@@ -310,9 +310,9 @@ export async function searchProducts(
   const url =
     `${SEARCH_BASE}/${countryCode}/${langCode}/search-result-page` +
     `?q=${encodeURIComponent(query)}&size=${size}`;
-  return fetchJson<SearchResponse>(url, {
+  return checkSearchResponse(await fetchJson<unknown>(url, {
     "User-Agent": "Mozilla/5.0",
-  });
+  }));
 }
 
 export async function getProductDetails(

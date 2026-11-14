@@ -1217,6 +1217,97 @@ test("checkSearchResponse rejects a response that is not an object", () => {
   );
 });
 
+function makeChangedSearchResponse(): unknown {
+  const { salesPrice, ...product } = makeSearchProduct();
+  return makeSearchResponse([{ type: "PRODUCT", product: { ...product, price: salesPrice } }]);
+}
+
+test("callTool reports a changed search response as a tool error instead of undefined prices", async () => {
+  const body = makeChangedSearchResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("search_products", { query: "billy" })) as ToolCallResult;
+    assert.equal(result.isError, true);
+    assert.equal(
+      result.content[0].text,
+      "search_products failed: IKEA search response changed: searchResultPage.products.main.items.0.product.salesPrice is missing. This server needs an update."
+    );
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("callTool reports a changed search response from get_product_details as a tool error", async () => {
+  const body = makeChangedSearchResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("get_product_details", { itemNo: "20522046" })) as ToolCallResult;
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^get_product_details failed: IKEA search response changed: /);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("a changed search response is not retried and leaks neither the request URL nor the query", async () => {
+  const body = makeChangedSearchResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("search_products", { query: "billy" })) as ToolCallResult;
+    assert.equal(fetchMock.mock.callCount(), 1);
+    assert.ok(!result.content[0].text.includes("sik.search.blue.cdtapps.com"));
+    assert.ok(!result.content[0].text.includes("billy"));
+    assert.ok(!result.content[0].text.includes("Invalid input"));
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("search_products still answers a search response in today's shape", async () => {
+  const body = makeSearchResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("search_products", { query: "billy" })) as ToolCallResult;
+    assert.notEqual(result.isError, true);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.equal(parsed.total, 2);
+    assert.equal(parsed.items.length, 1);
+    assert.deepEqual(parsed.items[0].salesPrice, { amount: 79, currencyCode: "USD" });
+    assert.equal(parsed.items[0].name, "BILLY");
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("get_product_details still answers a search response in today's shape", async () => {
+  const body = makeSearchResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("get_product_details", { itemNo: "20522046" })) as ToolCallResult;
+    assert.notEqual(result.isError, true);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.equal(parsed.name, "BILLY");
+    assert.deepEqual(parsed.salesPrice, { amount: 79, currencyCode: "USD" });
+    assert.equal(parsed.designText, "white");
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("search_products answers a query with no results as an empty list", async () => {
+  const body = makeSearchResponse([], 0);
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("search_products", { query: "billy" })) as ToolCallResult;
+    assert.notEqual(result.isError, true);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.equal(parsed.total, 0);
+    assert.deepEqual(parsed.items, []);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
 function makeChangedStockResponse(): unknown {
   const base = makeStockResponse();
   const item = base.availabilities![0];
