@@ -12,7 +12,7 @@ import { searchProductsTool } from "../src/tools/search_products.js";
 import { getProductDetailsTool } from "../src/tools/get_product_details.js";
 import { checkCartAvailabilityTool } from "../src/tools/check_cart_availability.js";
 import { callTool, listTools } from "../src/server.js";
-import { toToolError } from "../src/utils/errors.js";
+import { toToolError, UpstreamShapeError } from "../src/utils/errors.js";
 import { fetchJson, REQUEST_TIMEOUT_MS } from "../src/utils/http.js";
 import { ZodError } from "zod";
 import { distanceKm, nearestStores } from "../src/data/geo.js";
@@ -1014,6 +1014,83 @@ test("toToolError lists every invalid field of a zod error", () => {
     toToolError("find_best_store_for_cart", err).content[0].text,
     "Invalid input for find_best_store_for_cart: items.0.itemNo: bad item number; input: storeIds or countryCode is required. Fix the arguments and call the tool again."
   );
+});
+
+function missingCashCarry(): ZodError {
+  return new ZodError([
+    { code: "invalid_type", expected: "object", received: "undefined", path: ["availabilities", 0, "buyingOption", "cashCarry"], message: "Required" },
+  ]);
+}
+
+test("UpstreamShapeError names the endpoint kind and the missing field", () => {
+  const cause = missingCashCarry();
+  const err = new UpstreamShapeError("stock", cause);
+  assert.equal(err.message, "IKEA stock response changed: availabilities.0.buyingOption.cashCarry is missing");
+  assert.equal(err.name, "UpstreamShapeError");
+  assert.equal(err.cause, cause);
+  assert.ok(err instanceof Error);
+});
+
+test("UpstreamShapeError reports a wrong type with the field path and the zod message", () => {
+  const cause = new ZodError([
+    {
+      code: "invalid_type",
+      expected: "number",
+      received: "string",
+      path: ["availabilities", 0, "buyingOption", "cashCarry", "availability", "quantity"],
+      message: "Expected number, received string",
+    },
+  ]);
+  assert.equal(
+    new UpstreamShapeError("stock", cause).message,
+    "IKEA stock response changed: availabilities.0.buyingOption.cashCarry.availability.quantity: Expected number, received string"
+  );
+});
+
+test("UpstreamShapeError names the response itself when the failing path is empty", () => {
+  const cause = new ZodError([
+    { code: "invalid_type", expected: "object", received: "array", path: [], message: "Expected object, received array" },
+  ]);
+  assert.equal(
+    new UpstreamShapeError("search", cause).message,
+    "IKEA search response changed: response: Expected object, received array"
+  );
+});
+
+test("UpstreamShapeError reports only the first failing field", () => {
+  const cause = new ZodError([
+    { code: "invalid_type", expected: "array", received: "undefined", path: ["availabilities"], message: "Required" },
+    { code: "custom", path: ["errors"], message: "bad errors" },
+  ]);
+  const message = new UpstreamShapeError("stock", cause).message;
+  assert.equal(message, "IKEA stock response changed: availabilities is missing");
+  assert.ok(!message.includes("errors"));
+});
+
+test("UpstreamShapeError still reports a changed response when the ZodError has no issues", () => {
+  const cause = new ZodError([]);
+  const err = new UpstreamShapeError("stock", cause);
+  assert.equal(err.message, "IKEA stock response changed: response does not match the expected shape");
+  assert.equal(err.cause, cause);
+  assert.equal(
+    toToolError("check_store_stock", err).content[0].text,
+    "check_store_stock failed: IKEA stock response changed: response does not match the expected shape. This server needs an update."
+  );
+});
+
+test("toToolError reports a changed IKEA response as an upstream failure, not invalid input", () => {
+  const result = toToolError("check_store_stock", new UpstreamShapeError("stock", missingCashCarry()));
+  assert.equal(result.isError, true);
+  assert.equal(
+    result.content[0].text,
+    "check_store_stock failed: IKEA stock response changed: availabilities.0.buyingOption.cashCarry is missing. This server needs an update."
+  );
+  assert.ok(!result.content[0].text.includes("Invalid input"));
+});
+
+test("toToolError still reports a ZodError from tool input as invalid input", () => {
+  const err = new ZodError([{ code: "custom", path: ["itemNo"], message: "bad item number" }]);
+  assert.match(toToolError("check_store_stock", err).content[0].text, /^Invalid input for check_store_stock: itemNo: bad item number/);
 });
 
 test("every listed tool is annotated read-only with a title; only the catalog tools are closed-world", () => {
