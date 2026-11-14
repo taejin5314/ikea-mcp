@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { fetchJson } from "../utils/http.js";
+import { UpstreamShapeError } from "../utils/errors.js";
 
 const SEARCH_BASE = "https://sik.search.blue.cdtapps.com";
 const STOCK_BASE = "https://api.ingka.ikea.com/cia/availabilities";
@@ -112,10 +114,59 @@ interface StockError {
 }
 
 export interface StockResponse {
-  availabilities: StockAvailabilityItem[] | null;
+  /** Left out, not null, when the store does not exist: the live API then answers only `errors` (405). */
+  availabilities?: StockAvailabilityItem[] | null;
   errors?: StockError[];
   timestamp: string;
   // TODO: traceId not typed — not needed for MVP
+}
+
+// ── Stock response check ─────────────────────────────────────────────────────
+// The schema lists only the fields this server reads; unknown fields are ignored.
+
+const StockAvailabilitySchema = z.object({
+  quantity: z.number(),
+  probability: z.object({ thisDay: z.object({ messageType: z.string() }) }),
+});
+
+const StockCashCarrySchema = z.object({
+  availability: StockAvailabilitySchema.optional(),
+  eligibleForStockNotification: z.boolean(),
+  range: z.object({ inRange: z.boolean() }).optional(),
+});
+
+const StockAvailabilityItemSchema = z.object({
+  availableForCashCarry: z.boolean(),
+  buyingOption: z.object({ cashCarry: StockCashCarrySchema }),
+  itemKey: z.object({ itemNo: z.string() }),
+});
+
+const StockErrorSchema = z.object({
+  code: z.number(),
+  message: z.string(),
+  details: z.object({ itemNo: z.string().optional() }).optional(),
+});
+
+// An unknown store is answered with `errors` alone, so `availabilities` may be left out; a response with neither
+// is not one this server knows.
+const StockResponseSchema = z
+  .object({
+    availabilities: z.array(StockAvailabilityItemSchema).nullish(),
+    errors: z.array(StockErrorSchema).optional(),
+  })
+  .refine((r) => r.availabilities !== undefined || r.errors !== undefined, {
+    message: "neither availabilities nor errors is present",
+  });
+
+/**
+ * Returns IKEA's stock response unchanged.
+ * Throws UpstreamShapeError when it is not the shape this server reads.
+ */
+export function checkStockResponse(json: unknown): StockResponse {
+  const parsed = StockResponseSchema.safeParse(json);
+  if (!parsed.success) throw new UpstreamShapeError("stock", parsed.error);
+  // This line stops compiling if the interface and the schema disagree.
+  return (json as StockResponse) satisfies z.infer<typeof StockResponseSchema>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -251,9 +302,7 @@ export async function getMultiItemStock(
   const url =
     `${STOCK_BASE}/sto/${storeId}` +
     `?itemNos=${itemNos.map(encodeURIComponent).join(",")}&expand=StoresList,Restocks`;
-  return fetchJson<StockResponse>(url, {
-    "X-Client-Id": STOCK_CLIENT_ID,
-  });
+  return checkStockResponse(await fetchJson<unknown>(url, { "X-Client-Id": STOCK_CLIENT_ID }));
 }
 
 export async function getStoreStock(
@@ -266,7 +315,5 @@ export async function getStoreStock(
   const url =
     `${STOCK_BASE}/sto/${storeId}` +
     `?itemNos=${encodeURIComponent(itemNo)}&expand=StoresList,Restocks`;
-  return fetchJson<StockResponse>(url, {
-    "X-Client-Id": STOCK_CLIENT_ID,
-  });
+  return checkStockResponse(await fetchJson<unknown>(url, { "X-Client-Id": STOCK_CLIENT_ID }));
 }

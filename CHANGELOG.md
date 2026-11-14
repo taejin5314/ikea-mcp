@@ -3,6 +3,15 @@
 Notable changes to ikea-mcp. Versions follow [semantic versioning](https://semver.org/): a result's existing keys
 and meaning do not change within a major version.
 
+## Unreleased
+
+### Changed
+
+- **A changed IKEA stock response is reported.** The stock tools check the shape of IKEA's stock response. When a
+  field the server reads is missing or has another type, the call comes back as a result marked `isError` that says
+  IKEA's response changed and names the field. It used to answer `quantity: null` and `availableForCashCarry: false`,
+  which looked like "not in stock".
+
 ## 1.10.0
 
 The first release since 1.6.2. Versions 1.7.0, 1.8.0 and 1.9.0 were prepared but never published; their changes,

@@ -1,4 +1,4 @@
-import { ZodError } from "zod";
+import { ZodError, type ZodIssue } from "zod";
 
 /** A tool result that tells the model what went wrong, instead of a protocol error the client may hide. */
 export interface ToolErrorResult {
@@ -16,14 +16,38 @@ function describeIssues(err: ZodError): string {
     .join("; ");
 }
 
+export type UpstreamKind = "search" | "stock";
+
+function describeShapeIssue(issue: ZodIssue | undefined): string {
+  if (!issue) {
+    return "response does not match the expected shape";
+  }
+  const where = issue.path.length ? issue.path.join(".") : "response";
+  if (issue.code === "invalid_type" && issue.received === "undefined") {
+    return `${where} is missing`;
+  }
+  return `${where}: ${issue.message}`;
+}
+
+/** IKEA answered, but not in the shape this server reads. */
+export class UpstreamShapeError extends Error {
+  constructor(kind: UpstreamKind, cause: ZodError) {
+    super(`IKEA ${kind} response changed: ${describeShapeIssue(cause.issues[0])}`, { cause });
+    this.name = "UpstreamShapeError";
+  }
+}
+
 /**
  * Turns anything a tool handler threw into a tool result with isError set.
  * Invalid input names the field so the model can correct the call; anything else is reported as an upstream failure.
+ * A changed IKEA response is also an upstream failure, one that needs a server update.
  */
 export function toToolError(toolName: string, err: unknown): ToolErrorResult {
   let text: string;
   if (err instanceof ZodError) {
     text = `Invalid input for ${toolName}: ${describeIssues(err)}. Fix the arguments and call the tool again.`;
+  } else if (err instanceof UpstreamShapeError) {
+    text = `${toolName} failed: ${err.message}. This server needs an update.`;
   } else if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
     text = `${toolName} failed: the IKEA API did not answer in time. Try again shortly.`;
   } else {

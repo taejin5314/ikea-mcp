@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
+import { checkStockResponse, projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
 import { storeIdsByCountry, STORE_LABELS, STORES, storeLabel, storeLabelFor, storeCountry, allStoreIds } from "../src/data/stores.js";
 import { readFileSync } from "node:fs";
 import { COUNTRY_CODES, DEFAULT_LANG_CODE, defaultLangCode, isCountryCode } from "../src/data/countries.js";
@@ -12,7 +12,7 @@ import { searchProductsTool } from "../src/tools/search_products.js";
 import { getProductDetailsTool } from "../src/tools/get_product_details.js";
 import { checkCartAvailabilityTool } from "../src/tools/check_cart_availability.js";
 import { callTool, listTools } from "../src/server.js";
-import { toToolError } from "../src/utils/errors.js";
+import { toToolError, UpstreamShapeError } from "../src/utils/errors.js";
 import { fetchJson, REQUEST_TIMEOUT_MS } from "../src/utils/http.js";
 import { ZodError } from "zod";
 import { distanceKm, nearestStores } from "../src/data/geo.js";
@@ -922,6 +922,217 @@ test("check_cart_availability — item outside the store's range is insufficient
   }
 });
 
+// ── Stock response check ──────────────────────────────────────────────────────
+
+test("checkStockResponse returns today's stock response unchanged", () => {
+  const body: unknown = makeStockResponse();
+  assert.equal(checkStockResponse(body), body);
+  assert.deepEqual(projectStock(checkStockResponse(body)), {
+    availableForCashCarry: true,
+    inRange: null,
+    quantity: 42,
+    messageType: "HIGH_IN_STOCK",
+    eligibleForStockNotification: false,
+    errors: [],
+  });
+});
+
+test("checkStockResponse accepts null availabilities with a 405 error", () => {
+  const body: unknown = makeStockResponse({
+    availabilities: null,
+    errors: [{ code: 405, message: "ClassUnitCode doesn't exist" }],
+  });
+  assert.equal(checkStockResponse(body), body);
+});
+
+test("checkStockResponse accepts an item with no availability and inRange false", () => {
+  const body: unknown = withRange(false);
+  assert.equal(checkStockResponse(body), body);
+});
+
+test("checkStockResponse accepts an empty availabilities array and absent errors", () => {
+  const body: unknown = makeStockResponse({ availabilities: [] });
+  assert.doesNotThrow(() => checkStockResponse(body));
+});
+
+test("checkStockResponse names a renamed cashCarry key", () => {
+  const item = makeStockResponse().availabilities![0];
+  const body: unknown = {
+    ...makeStockResponse(),
+    availabilities: [{ ...item, buyingOption: { cashAndCarry: item.buyingOption.cashCarry } }],
+  };
+  assert.throws(
+    () => checkStockResponse(body),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message === "IKEA stock response changed: availabilities.0.buyingOption.cashCarry is missing"
+  );
+});
+
+test("checkStockResponse names quantity when it is a string and keeps the value out of the message", () => {
+  const base = withRange(true, 7);
+  const item = base.availabilities![0];
+  const cashCarry = item.buyingOption.cashCarry;
+  const body: unknown = {
+    ...base,
+    availabilities: [
+      {
+        ...item,
+        buyingOption: {
+          ...item.buyingOption,
+          cashCarry: { ...cashCarry, availability: { ...cashCarry.availability!, quantity: "forty-two" } },
+        },
+      },
+    ],
+  };
+  assert.throws(
+    () => checkStockResponse(body),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      /^IKEA stock response changed: availabilities\.0\.buyingOption\.cashCarry\.availability\.quantity: /.test(err.message) &&
+      !err.message.includes("forty-two")
+  );
+});
+
+test("checkStockResponse ignores unknown fields at every level", () => {
+  const body: unknown = {
+    extra: 1,
+    availabilities: [
+      {
+        extra: 1,
+        availableForCashCarry: true,
+        buyingOption: {
+          extra: 1,
+          cashCarry: {
+            extra: 1,
+            availability: {
+              extra: 1,
+              quantity: 42,
+              probability: { extra: 1, thisDay: { extra: 1, messageType: "HIGH_IN_STOCK" } },
+            },
+            eligibleForStockNotification: false,
+            range: { inRange: true, extra: 1 },
+          },
+        },
+        itemKey: { itemNo: "20522046", extra: 1 },
+      },
+    ],
+    errors: [{ code: 404, message: "Not found", extra: 1, details: { itemNo: "20522046", extra: 1 } }],
+  };
+  const before = structuredClone(body);
+  assert.equal(checkStockResponse(body), body);
+  assert.deepEqual(body, before);
+});
+
+test("checkStockResponse accepts the live answer for an unknown store: errors and no availabilities key", () => {
+  // Captured from the live API on 14 November 2026 for store 999.
+  const body: unknown = {
+    errors: [
+      { code: 405, details: { classUnitCode: "999", classUnitType: "STO" }, message: "ClassUnitCode doesn't exist" },
+    ],
+    timestamp: "2026-11-14T20:50:32.813Z",
+    traceId: "10028873663796547713",
+  };
+  assert.equal(checkStockResponse(body), body);
+  assert.equal(projectStock(body as StockResponse).errors[0]?.meaning, "store ID does not exist");
+});
+
+test("checkStockResponse rejects a response with neither availabilities nor errors", () => {
+  assert.throws(
+    () => checkStockResponse({ timestamp: "t" }),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message === "IKEA stock response changed: response: neither availabilities nor errors is present"
+  );
+});
+
+test("checkStockResponse rejects a response that is not an object", () => {
+  assert.throws(
+    () => checkStockResponse([]),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message.startsWith("IKEA stock response changed: response: ")
+  );
+});
+
+function makeChangedStockResponse(): unknown {
+  const base = makeStockResponse();
+  const item = base.availabilities![0];
+  return { ...base, availabilities: [{ ...item, buyingOption: { cashAndCarry: item.buyingOption.cashCarry } }] };
+}
+
+type ToolCallResult = { isError?: boolean; content: { text: string }[] };
+
+test("callTool reports a changed stock response as a tool error instead of empty stock values", async () => {
+  const body = makeChangedStockResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_store_stock", { itemNo: "20522046", storeId: "399" })) as ToolCallResult;
+    assert.equal(result.isError, true);
+    assert.equal(
+      result.content[0].text,
+      "check_store_stock failed: IKEA stock response changed: availabilities.0.buyingOption.cashCarry is missing. This server needs an update."
+    );
+    assert.ok(!result.content[0].text.includes("quantity"));
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("a changed stock response is not retried and does not leak the request URL", async () => {
+  const body = makeChangedStockResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_store_stock", { itemNo: "20522046", storeId: "399" })) as ToolCallResult;
+    assert.equal(fetchMock.mock.callCount(), 1);
+    assert.ok(!result.content[0].text.includes("api.ingka.ikea.com"));
+    assert.ok(!result.content[0].text.includes("Invalid input"));
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("callTool reports a changed stock response on the multi-item path as a tool error", async () => {
+  const body = makeChangedStockResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_multi_item_stock", { storeId: "399", itemNos: ["20522046"] })) as ToolCallResult;
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^check_multi_item_stock failed: IKEA stock response changed: /);
+    assert.equal(fetchMock.mock.callCount(), 1);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("check_store_stock still answers a stock response in today's shape", async () => {
+  const body = makeStockResponse();
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_store_stock", { itemNo: "20522046", storeId: "399" })) as ToolCallResult;
+    assert.notEqual(result.isError, true);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.equal(parsed.quantity, 42);
+    assert.equal(parsed.availableForCashCarry, true);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("check_store_stock still answers a 405 store error as data", async () => {
+  const body = makeStockResponse({ availabilities: null, errors: [{ code: 405, message: "ClassUnitCode doesn't exist" }] });
+  const fetchMock = mock.method(globalThis, "fetch", async () => new Response(JSON.stringify(body)));
+  try {
+    const result = (await callTool("check_store_stock", { itemNo: "20522046", storeId: "399" })) as ToolCallResult;
+    assert.notEqual(result.isError, true);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.equal(parsed.quantity, null);
+    assert.equal(parsed.errors[0].meaning, "store ID does not exist");
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
 // ── list_stores handler and tool schemas ──────────────────────────────────────
 
 async function listStores(args: Record<string, unknown>) {
@@ -1014,6 +1225,83 @@ test("toToolError lists every invalid field of a zod error", () => {
     toToolError("find_best_store_for_cart", err).content[0].text,
     "Invalid input for find_best_store_for_cart: items.0.itemNo: bad item number; input: storeIds or countryCode is required. Fix the arguments and call the tool again."
   );
+});
+
+function missingCashCarry(): ZodError {
+  return new ZodError([
+    { code: "invalid_type", expected: "object", received: "undefined", path: ["availabilities", 0, "buyingOption", "cashCarry"], message: "Required" },
+  ]);
+}
+
+test("UpstreamShapeError names the endpoint kind and the missing field", () => {
+  const cause = missingCashCarry();
+  const err = new UpstreamShapeError("stock", cause);
+  assert.equal(err.message, "IKEA stock response changed: availabilities.0.buyingOption.cashCarry is missing");
+  assert.equal(err.name, "UpstreamShapeError");
+  assert.equal(err.cause, cause);
+  assert.ok(err instanceof Error);
+});
+
+test("UpstreamShapeError reports a wrong type with the field path and the zod message", () => {
+  const cause = new ZodError([
+    {
+      code: "invalid_type",
+      expected: "number",
+      received: "string",
+      path: ["availabilities", 0, "buyingOption", "cashCarry", "availability", "quantity"],
+      message: "Expected number, received string",
+    },
+  ]);
+  assert.equal(
+    new UpstreamShapeError("stock", cause).message,
+    "IKEA stock response changed: availabilities.0.buyingOption.cashCarry.availability.quantity: Expected number, received string"
+  );
+});
+
+test("UpstreamShapeError names the response itself when the failing path is empty", () => {
+  const cause = new ZodError([
+    { code: "invalid_type", expected: "object", received: "array", path: [], message: "Expected object, received array" },
+  ]);
+  assert.equal(
+    new UpstreamShapeError("search", cause).message,
+    "IKEA search response changed: response: Expected object, received array"
+  );
+});
+
+test("UpstreamShapeError reports only the first failing field", () => {
+  const cause = new ZodError([
+    { code: "invalid_type", expected: "array", received: "undefined", path: ["availabilities"], message: "Required" },
+    { code: "custom", path: ["errors"], message: "bad errors" },
+  ]);
+  const message = new UpstreamShapeError("stock", cause).message;
+  assert.equal(message, "IKEA stock response changed: availabilities is missing");
+  assert.ok(!message.includes("errors"));
+});
+
+test("UpstreamShapeError still reports a changed response when the ZodError has no issues", () => {
+  const cause = new ZodError([]);
+  const err = new UpstreamShapeError("stock", cause);
+  assert.equal(err.message, "IKEA stock response changed: response does not match the expected shape");
+  assert.equal(err.cause, cause);
+  assert.equal(
+    toToolError("check_store_stock", err).content[0].text,
+    "check_store_stock failed: IKEA stock response changed: response does not match the expected shape. This server needs an update."
+  );
+});
+
+test("toToolError reports a changed IKEA response as an upstream failure, not invalid input", () => {
+  const result = toToolError("check_store_stock", new UpstreamShapeError("stock", missingCashCarry()));
+  assert.equal(result.isError, true);
+  assert.equal(
+    result.content[0].text,
+    "check_store_stock failed: IKEA stock response changed: availabilities.0.buyingOption.cashCarry is missing. This server needs an update."
+  );
+  assert.ok(!result.content[0].text.includes("Invalid input"));
+});
+
+test("toToolError still reports a ZodError from tool input as invalid input", () => {
+  const err = new ZodError([{ code: "custom", path: ["itemNo"], message: "bad item number" }]);
+  assert.match(toToolError("check_store_stock", err).content[0].text, /^Invalid input for check_store_stock: itemNo: bad item number/);
 });
 
 test("every listed tool is annotated read-only with a title; only the catalog tools are closed-world", () => {
@@ -1298,4 +1586,16 @@ test("docs — CHANGELOG lists maxDistanceKm under 1.10.0 above 1.9.0", () => {
   const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
   const release = sectionBetween(changelog, "## 1.10.0", "## 1.9.0");
   assert.ok(release.includes("maxDistanceKm"));
+});
+
+test("docs — README mentions the stock response check under How it is built", () => {
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const section = sectionBetween(readme, "## How it is built", "## Limitations");
+  assert.ok(section.includes("stock response"));
+});
+
+test("docs — CHANGELOG has an Unreleased section above 1.10.0 that mentions the stock response check", () => {
+  const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+  const unreleased = sectionBetween(changelog, "## Unreleased", "## 1.10.0");
+  assert.ok(unreleased.includes("stock response"));
 });

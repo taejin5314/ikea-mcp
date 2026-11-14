@@ -143,6 +143,9 @@ and answer nearest first:
 - **Failures the assistant can read.** Invalid arguments and upstream failures come back as tool results marked
   `isError`, naming the field to fix, instead of protocol errors a client may hide. Every request to IKEA times out
   after 10 seconds.
+- **A changed IKEA response is an error, not an empty answer.** The stock response is checked against a zod schema
+  where it enters the server. When IKEA renames or moves a field the server reads, the call fails with an error that
+  names the field, instead of answering `quantity: null`.
 - **Declared read-only.** Every tool carries MCP annotations (`readOnlyHint`, a title), so clients know they
   change nothing.
 - **Watched daily.** A scheduled job runs the smoke test against the live API and opens an issue when IKEA changes
