@@ -23,6 +23,7 @@ export const findBestStoreForItemTool = {
         required: ["latitude", "longitude"],
       },
       nearestStores: { type: "number", default: 5, description: "With near: how many of the closest stores to search (1–20)." },
+      maxDistanceKm: { type: "number", description: "Leave out stores farther than this." },
       minQuantity: { type: "number" },
     },
     required: ["itemNo"],

@@ -88,6 +88,14 @@ const Near = z.object({
   longitude: z.number().min(-180).max(180),
 });
 const NearestStores = z.number().int().min(1).max(20).default(5);
+// Same rule as FindNearbyStoresInput.maxDistanceKm.
+const MaxDistanceKm = z.number().positive().optional();
+const MAX_DISTANCE_NEEDS_NEAR = "maxDistanceKm needs near";
+
+// A distance limit only means something for a `near` search; explicit `storeIds` are searched as given, so the limit is ignored there.
+function maxDistanceHasPlace(d: { maxDistanceKm?: number; near?: unknown; storeIds?: unknown }): boolean {
+  return d.maxDistanceKm === undefined || d.near !== undefined || d.storeIds !== undefined;
+}
 
 export const FindNearbyStoresInput = z.object({
   latitude: z.number().min(-90).max(90),
@@ -97,15 +105,18 @@ export const FindNearbyStoresInput = z.object({
   maxDistanceKm: z.number().positive().optional(),
 });
 
-export const FindBestStoreInput = z.object({
-  itemNo: ItemNo,
-  storeIds: z.array(z.string().min(1)).optional(),
-  maxResults: z.number().int().min(1).max(50).default(3),
-  countryCode: CountryCodeEnum.optional(),
-  near: Near.optional(),
-  nearestStores: NearestStores,
-  minQuantity: z.number().int().min(1).optional(),
-});
+export const FindBestStoreInput = z
+  .object({
+    itemNo: ItemNo,
+    storeIds: z.array(z.string().min(1)).optional(),
+    maxResults: z.number().int().min(1).max(50).default(3),
+    countryCode: CountryCodeEnum.optional(),
+    near: Near.optional(),
+    nearestStores: NearestStores,
+    maxDistanceKm: MaxDistanceKm,
+    minQuantity: z.number().int().min(1).optional(),
+  })
+  .refine(maxDistanceHasPlace, { message: MAX_DISTANCE_NEEDS_NEAR, path: ["maxDistanceKm"] });
 
 export const GetProductDetailsInput = z
   .object({
@@ -130,19 +141,22 @@ export const CheckCartAvailabilityInput = z.object({
   ).min(1).max(20),
 });
 
-export const FindBestStoreForCartInput = z.object({
-  items: z.array(
-    z.object({
-      itemNo: ItemNo,
-      quantity: z.number().int().min(1).max(99).default(1),
-    })
-  ).min(1).max(20),
-  storeIds: z.array(z.string().min(1)).optional(),
-  countryCode: CountryCodeEnum.optional(),
-  near: Near.optional(),
-  nearestStores: NearestStores,
-  maxResults: z.number().int().min(1).max(50).default(3),
-});
+export const FindBestStoreForCartInput = z
+  .object({
+    items: z.array(
+      z.object({
+        itemNo: ItemNo,
+        quantity: z.number().int().min(1).max(99).default(1),
+      })
+    ).min(1).max(20),
+    storeIds: z.array(z.string().min(1)).optional(),
+    countryCode: CountryCodeEnum.optional(),
+    near: Near.optional(),
+    nearestStores: NearestStores,
+    maxDistanceKm: MaxDistanceKm,
+    maxResults: z.number().int().min(1).max(50).default(3),
+  })
+  .refine(maxDistanceHasPlace, { message: MAX_DISTANCE_NEEDS_NEAR, path: ["maxDistanceKm"] });
 
 export type ListStoresInputType = z.infer<typeof ListStoresInput>;
 export type SearchProductsInputType = z.infer<typeof SearchProductsInput>;

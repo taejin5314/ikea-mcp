@@ -3,6 +3,14 @@
 Notable changes to ikea-mcp. Versions follow [semantic versioning](https://semver.org/): a result's existing keys
 and meaning do not change within a major version.
 
+## Unreleased
+
+### Added
+
+- **`maxDistanceKm`** on `find_best_store_for_item` and `find_best_store_for_cart`: with `near` it leaves out stores
+  farther than that, as `find_nearby_stores` already does. With no store in range they return an empty list without
+  calling IKEA. `maxDistanceKm` without `near` or `storeIds` is rejected as invalid input.
+
 ## 1.9.0
 
 The first release since 1.6.2. Versions 1.7.0 and 1.8.0 were prepared but never published; their changes ship here.

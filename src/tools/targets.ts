@@ -7,6 +7,7 @@ export interface TargetInput {
   countryCode?: CountryCode;
   near?: { latitude: number; longitude: number };
   nearestStores: number;
+  maxDistanceKm?: number;
 }
 
 export interface Targets {
@@ -17,14 +18,15 @@ export interface Targets {
 
 /**
  * The stores a ranking tool should search. Explicit storeIds win; then the stores closest to `near`
- * (within countryCode when both are given); then every store in countryCode; then the whole catalog.
+ * (within countryCode when both are given; with `near`, `maxDistanceKm` leaves out stores farther than that,
+ * and it is ignored with explicit storeIds); then every store in countryCode; then the whole catalog.
  */
 export function resolveTargets(input: TargetInput): Targets {
   if (input.storeIds) return { storeIds: input.storeIds, distances: new Map() };
   if (input.near) {
     const nearest = nearestStores(
       { lat: input.near.latitude, lon: input.near.longitude },
-      { countryCode: input.countryCode, limit: input.nearestStores }
+      { countryCode: input.countryCode, limit: input.nearestStores, maxDistanceKm: input.maxDistanceKm }
     );
     return { storeIds: nearest.map((s) => s.storeId), distances: new Map(nearest.map((s) => [s.storeId, s.distanceKm])) };
   }

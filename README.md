@@ -121,6 +121,10 @@ and answer nearest first:
 
 - `near` searches the 5 closest stores by default; set `nearestStores` (1–20) to widen it. Add `countryCode` to stay
   inside one country near a border.
+- `maxDistanceKm` (a number greater than 0), used together with `near`, leaves out stores farther than that
+  straight-line distance, as in `{ "itemNo": "20522046", "near": { "latitude": 43.65, "longitude": -79.38 }, "maxDistanceKm": 100 }`.
+  If no store is within it the tools return `[]` and send no request to IKEA. It is ignored when explicit `storeIds`
+  are given; without `near` and without `storeIds` the call is rejected with `maxDistanceKm needs near`.
 - Which stores are searched: explicit `storeIds`, else the stores closest to `near`, else every store in
   `countryCode`, else the whole catalog.
 - `find_nearby_stores` returns just the stores and distances, without a stock lookup.
@@ -336,8 +340,9 @@ Find stores with the highest in-stock quantity for an item. Queries stores in pa
 | `maxResults` | number | `3` (max 50) | no |
 | `countryCode` | `"US"` \| `"CA"` \| `"NO"` | — | no |
 | `minQuantity` | number (int ≥ 1) | — | no |
+| `maxDistanceKm` | number (> 0) | — | no |
 
-`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 83 known stores. `minQuantity` excludes stores with quantity below the threshold.
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 83 known stores. `minQuantity` excludes stores with quantity below the threshold. `maxDistanceKm` applies only with `near` (see "Finding stores by place").
 
 **Output** — array of matching stores, up to `maxResults`:
 ```json
@@ -407,8 +412,9 @@ Find the best store to buy multiple items in one trip. Ranks stores by how many 
 | `storeIds` | string[] | — | no |
 | `countryCode` | `"US"` \| `"CA"` \| `"NO"` | — | no |
 | `maxResults` | number | `3` (max 50) | no |
+| `maxDistanceKm` | number (> 0) | — | no |
 
-`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 83 known stores.
+`storeIds` takes precedence. If only `countryCode` is given, searches all catalog stores for that country. If neither is given, searches all 83 known stores. `maxDistanceKm` applies only with `near` (see "Finding stores by place").
 
 **Output** — array of stores ranked by cart fulfillment, up to `maxResults`:
 ```json
