@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { checkStockResponse, projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
+import { checkSearchResponse, checkStockResponse, projectStock, projectProduct, projectMultiItemStock, type StockResponse } from "../src/services/ikea.js";
 import { storeIdsByCountry, STORE_LABELS, STORES, storeLabel, storeLabelFor, storeCountry, allStoreIds } from "../src/data/stores.js";
 import { readFileSync } from "node:fs";
 import { COUNTRY_CODES, DEFAULT_LANG_CODE, defaultLangCode, isCountryCode } from "../src/data/countries.js";
@@ -1052,6 +1052,168 @@ test("checkStockResponse rejects a response that is not an object", () => {
     (err: unknown) =>
       err instanceof UpstreamShapeError &&
       err.message.startsWith("IKEA stock response changed: response: ")
+  );
+});
+
+// ── Search response check ────────────────────────────────────────────────────
+
+// Captured from the live API on 14 November 2026 (US, q=20522046).
+function makeSearchProduct(): Record<string, unknown> {
+  return {
+    id: "20522046",
+    itemNo: "20522046",
+    itemNoGlobal: "20522046",
+    name: "BILLY",
+    typeName: "Bookcase",
+    itemMeasureReferenceText: '31 1/2x11x79 1/2 "',
+    mainImageUrl: "https://www.ikea.com/us/en/images/products/billy-bookcase-white__1590272_pe1038911_s5.jpg",
+    pipUrl: "https://www.ikea.com/us/en/p/billy-bookcase-white-20522046/",
+    ratingValue: 4.5,
+    ratingCount: 2126,
+    validDesignText: "white",
+    onlineSellable: true,
+    salesPrice: { currencyCode: "USD", numeral: 79 },
+  };
+}
+
+function makeSearchResponse(
+  items: unknown[] = [
+    { type: "PRODUCT", product: makeSearchProduct() },
+    { type: "CONTENT", metadata: {}, content: {}, label: "…", actionTokens: {}, isBreakout: false },
+  ],
+  max: number = items.length
+): Record<string, unknown> {
+  return {
+    usergroup: "…",
+    testActivationTriggers: [],
+    searchResultPage: {
+      searchPhrase: "20522046",
+      products: { main: { items, start: 0, end: items.length, max } },
+    },
+  };
+}
+
+function searchBodyWithProduct(product: Record<string, unknown>): Record<string, unknown> {
+  return makeSearchResponse([{ type: "PRODUCT", product }]);
+}
+
+test("checkSearchResponse returns today's search response unchanged", () => {
+  const body = makeSearchResponse();
+  assert.equal(checkSearchResponse(body), body);
+});
+
+test("checkSearchResponse ignores unknown fields at every level", () => {
+  const body: unknown = {
+    extra: 1,
+    searchResultPage: {
+      extra: 1,
+      products: {
+        extra: 1,
+        main: {
+          extra: 1,
+          moreToken: "t",
+          filters: [],
+          max: 1,
+          items: [
+            {
+              type: "PRODUCT",
+              extra: 1,
+              product: { ...makeSearchProduct(), extra: 1, salesPrice: { currencyCode: "USD", numeral: 79, extra: 1 } },
+            },
+          ],
+        },
+      },
+    },
+  };
+  const before = structuredClone(body);
+  assert.equal(checkSearchResponse(body), body);
+  assert.deepEqual(body, before);
+});
+
+test("checkSearchResponse accepts a query with no results", () => {
+  const body = makeSearchResponse([], 0);
+  assert.equal(checkSearchResponse(body), body);
+});
+
+test("checkSearchResponse accepts an item with no product", () => {
+  const body = makeSearchResponse([{ type: "CONTENT", label: "x" }]);
+  assert.equal(checkSearchResponse(body), body);
+});
+
+test("checkSearchResponse accepts an item whose product is null", () => {
+  const body = makeSearchResponse([{ type: "PRODUCT", product: null }]);
+  assert.equal(checkSearchResponse(body), body);
+});
+
+test("checkSearchResponse accepts a product with no reviews", () => {
+  const body = searchBodyWithProduct({ ...makeSearchProduct(), ratingValue: null, ratingCount: null });
+  assert.equal(checkSearchResponse(body), body);
+});
+
+test("checkSearchResponse accepts a product without validDesignText and itemMeasureReferenceText", () => {
+  const product = makeSearchProduct();
+  delete product.validDesignText;
+  delete product.itemMeasureReferenceText;
+  const body = searchBodyWithProduct(product);
+  assert.equal(checkSearchResponse(body), body);
+});
+
+test("checkSearchResponse accepts validDesignText and itemMeasureReferenceText as null", () => {
+  const body = searchBodyWithProduct({ ...makeSearchProduct(), validDesignText: null, itemMeasureReferenceText: null });
+  assert.equal(checkSearchResponse(body), body);
+});
+
+test("checkSearchResponse names a missing items array", () => {
+  const body = { searchResultPage: { products: { main: { start: 0, end: 0, max: 0 } } } };
+  assert.throws(
+    () => checkSearchResponse(body),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message === "IKEA search response changed: searchResultPage.products.main.items is missing"
+  );
+});
+
+test("checkSearchResponse names salesPrice.numeral when it is missing", () => {
+  const body = searchBodyWithProduct({ ...makeSearchProduct(), salesPrice: { currencyCode: "USD" } });
+  assert.throws(
+    () => checkSearchResponse(body),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message ===
+        "IKEA search response changed: searchResultPage.products.main.items.0.product.salesPrice.numeral is missing"
+  );
+});
+
+test("checkSearchResponse names name when it is a number and keeps the value out of the message", () => {
+  const body = searchBodyWithProduct({ ...makeSearchProduct(), name: 98765 });
+  assert.throws(
+    () => checkSearchResponse(body),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      /^IKEA search response changed: searchResultPage\.products\.main\.items\.0\.product\.name: /.test(err.message) &&
+      !err.message.includes("98765")
+  );
+});
+
+test("checkSearchResponse rejects a product whose ratingValue is missing", () => {
+  const product = makeSearchProduct();
+  delete product.ratingValue;
+  const body = searchBodyWithProduct(product);
+  assert.throws(
+    () => checkSearchResponse(body),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message ===
+        "IKEA search response changed: searchResultPage.products.main.items.0.product.ratingValue is missing"
+  );
+});
+
+test("checkSearchResponse rejects a response that is not an object", () => {
+  assert.throws(
+    () => checkSearchResponse([]),
+    (err: unknown) =>
+      err instanceof UpstreamShapeError &&
+      err.message.startsWith("IKEA search response changed: response: ")
   );
 });
 

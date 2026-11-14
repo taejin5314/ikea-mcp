@@ -45,7 +45,7 @@ interface SearchResultMain {
   start: number;
   end: number;
   max: number;
-  moreToken: string | null;
+  moreToken?: string | null; // left out by the live API (observed 2026-11-14)
 }
 
 interface SearchResultPage {
@@ -167,6 +167,42 @@ export function checkStockResponse(json: unknown): StockResponse {
   if (!parsed.success) throw new UpstreamShapeError("stock", parsed.error);
   // This line stops compiling if the interface and the schema disagree.
   return (json as StockResponse) satisfies z.infer<typeof StockResponseSchema>;
+}
+
+// ── Search response check ────────────────────────────────────────────────────
+// The schema lists only the fields this server reads; unknown fields are ignored.
+
+const SearchProductSchema = z.object({
+  itemNo: z.string(),
+  itemNoGlobal: z.string(),
+  name: z.string(),
+  typeName: z.string(),
+  pipUrl: z.string(),
+  mainImageUrl: z.string(),
+  // null means a product with no reviews.
+  ratingValue: z.number().nullable(),
+  ratingCount: z.number().nullable(),
+  // projectProduct answers null when either is absent.
+  validDesignText: z.string().nullish(),
+  itemMeasureReferenceText: z.string().nullish(),
+  salesPrice: z.object({ numeral: z.number(), currencyCode: z.string() }),
+});
+
+// Items such as type "CONTENT" carry no product; the tools skip them.
+const SearchResultItemSchema = z.object({ product: SearchProductSchema.nullish() });
+
+const SearchResponseSchema = z.object({
+  searchResultPage: z.object({
+    products: z.object({ main: z.object({ max: z.number(), items: z.array(SearchResultItemSchema) }) }),
+  }),
+});
+
+/** Returns IKEA's search response unchanged. Throws UpstreamShapeError when it is not the shape this server reads. */
+export function checkSearchResponse(json: unknown): SearchResponse {
+  const parsed = SearchResponseSchema.safeParse(json);
+  if (!parsed.success) throw new UpstreamShapeError("search", parsed.error);
+  // This line stops compiling if the interface and the schema disagree.
+  return (json as SearchResponse) satisfies z.infer<typeof SearchResponseSchema>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
