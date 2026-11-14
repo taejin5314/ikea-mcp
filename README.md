@@ -478,7 +478,7 @@ Returns one entry per item in the same order — items not stocked appear with `
 }
 ```
 
-Returns the top 3 stores by in-stock quantity across the mixed US/Canada subset. Omit `storeIds` to search all 74 known stores.
+Returns the top 3 stores by in-stock quantity across the mixed US/Canada subset. Omit `storeIds` to search all 83 known stores.
 
 ### 4. Best store for a shopping list
 

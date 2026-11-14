@@ -1294,8 +1294,8 @@ test("docs — README parameter tables of the ranking tools list maxDistanceKm",
   assert.ok(cartTool.includes("| `maxDistanceKm` |"));
 });
 
-test("docs — CHANGELOG lists maxDistanceKm under Unreleased above 1.9.0", () => {
+test("docs — CHANGELOG lists maxDistanceKm under 1.10.0 above 1.9.0", () => {
   const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
-  const unreleased = sectionBetween(changelog, "## Unreleased", "## 1.9.0");
-  assert.ok(unreleased.includes("maxDistanceKm"));
+  const release = sectionBetween(changelog, "## 1.10.0", "## 1.9.0");
+  assert.ok(release.includes("maxDistanceKm"));
 });
