@@ -3,7 +3,7 @@
 Notable changes to ikea-mcp. Versions follow [semantic versioning](https://semver.org/): a result's existing keys
 and meaning do not change within a major version.
 
-## Unreleased
+## 1.11.0
 
 ### Changed
 
