@@ -1,6 +1,6 @@
 {
   "name": "ikea-mcp",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "MCP server for IKEA product search and live in-store stock in the US, Canada and Norway: find the nearest store that has an item or a whole shopping list. Read-only, stdio and Streamable HTTP.",
   "license": "MIT",
   "type": "module",

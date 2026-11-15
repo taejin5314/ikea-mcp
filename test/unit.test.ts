@@ -1847,10 +1847,16 @@ test("docs — README mentions the stock response check under How it is built", 
   assert.ok(section.includes("stock response"));
 });
 
-test("docs — CHANGELOG has an Unreleased section above 1.10.0 that mentions the stock response check", () => {
+/** The newest changelog section, Unreleased or a version, so a release does not break the docs tests. */
+function newestChangelogSection(): string {
   const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
-  const unreleased = sectionBetween(changelog, "## Unreleased", "## 1.10.0");
-  assert.ok(unreleased.includes("stock response"));
+  const start = changelog.indexOf("\n## ");
+  const end = changelog.indexOf("\n## ", start + 1);
+  return changelog.slice(start, end === -1 ? undefined : end);
+}
+
+test("docs — the newest CHANGELOG section mentions the stock response check", () => {
+  assert.ok(newestChangelogSection().includes("stock response"));
 });
 
 test("docs — README mentions the search response check under How it is built", () => {
@@ -1859,8 +1865,6 @@ test("docs — README mentions the search response check under How it is built",
   assert.ok(section.includes("search response"));
 });
 
-test("docs — CHANGELOG Unreleased mentions the search response check", () => {
-  const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
-  const unreleased = sectionBetween(changelog, "## Unreleased", "## 1.10.0");
-  assert.ok(unreleased.includes("search response"));
+test("docs — the newest CHANGELOG section mentions the search response check", () => {
+  assert.ok(newestChangelogSection().includes("search response"));
 });
